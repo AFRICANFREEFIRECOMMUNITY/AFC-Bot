@@ -1195,7 +1195,12 @@ async def _handle_message(message: discord.Message):
             mode        = edit_cmd["mode"]
             instruction = edit_cmd["instruction"]
             edit_ch_id  = edit_cmd["channel_id"] or message.channel.id
-            edit_ch     = bot.get_channel(edit_ch_id) or message.channel
+
+            # Use fetch_channel to guarantee we get the channel even if not cached
+            try:
+                edit_ch = await bot.fetch_channel(edit_ch_id)
+            except Exception:
+                edit_ch = message.channel
 
             async def apply_edit(target_msg: discord.Message):
                 if target_msg.author.id != bot.user.id:
@@ -1903,7 +1908,10 @@ async def _handle_message(message: discord.Message):
             keyword    = purge_cmd["keyword"]
             pu_user_id = purge_cmd["user_id"]
             guild      = message.guild
-            target_ch  = guild.get_channel(target_cid) or message.channel
+            try:
+                target_ch = await bot.fetch_channel(target_cid)
+            except Exception:
+                target_ch = message.channel
 
             # Build confirmation embed
             if mode == "count":
