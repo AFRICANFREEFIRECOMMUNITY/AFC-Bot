@@ -263,9 +263,19 @@ Never tell a user to "check the website" if the answer is already in your knowle
 - For anything outside your capabilities, suggest they ask a moderator
 
 === PURGE / DELETE MESSAGES ===
-You CAN delete messages in a channel when asked by an admin. This works via the purge command.
+You CAN delete messages in any channel when asked by an admin — including from a different channel.
 If a regular user asks you to delete messages, let them know only moderators/admins can use that command.
-If an admin asks you to delete messages, they should use the purge command format — e.g. "purge the last 10 messages" or "purge all in <#channel>".
+Admins can specify a channel like: "purge last 10 in <#channel>" or "clear all messages in <#channel>"
+
+=== EDITING MESSAGES ===
+You CAN edit your own messages in any channel, even from a different channel.
+Admins can say things like: "edit last announcement in <#channel>, make it shorter"
+or "fix message 123456789 in <#channel>, less emojis"
+
+=== ROLE MANAGEMENT ===
+You CAN create, delete, rename, recolor, and edit role properties.
+Examples: "create role Veteran", "delete role @OldRole", "rename @Role to Senior Staff",
+"change @Role color to gold", "make @Role mentionable"
 
 === WHEN TO REDIRECT TO SUPPORT ===
 ONLY add ---SUPPORT_REDIRECT--- at the end of your reply when the issue GENUINELY needs a human — such as:
@@ -340,6 +350,16 @@ def parse_announce_command(text: str):
     if not channel_match:
         return None
 
+    # ── EDIT GUARD — never treat edit/fix/rewrite commands as announcements ──
+    if re.search(
+        r"\bedit\s+(this\s+)?message\b|\bedit\s+message\s+\d+\b"
+        r"|\bfix\s+(this\s+)?message\b|\bremove\s+your\s+embed\b"
+        r"|\bupdate\s+(this\s+)?message\b|\brewrite\s+(this\s+)?message\b"
+        r"|\bedit\s+last\b|\bfix\s+last\b",
+        text, re.IGNORECASE
+    ):
+        return None
+
     keywords = ["go to", "announce", "send", "tell", "say", "post", "message", "formulate",
                 "write", "draft", "create", "generate", "help me", "make", "compose",
                 "craft", "prepare", "put together", "please"]
@@ -375,12 +395,14 @@ def parse_announce_command(text: str):
         r"go\s+to", r"head\s+to",
         r"\bannounce\b", r"\bpost\b",
         r"send\s+(this\s+)?(to|in)?", r"send",
-        r"formulate\s+(an?\s+)?announcement\s*(for|about)?",
+        r"formulate\s+(an?\s+)?(proper\s+)?announcement\s*(for|about|on|telling|that)?",
         r"formulate", r"generate", r"draft", r"compose", r"craft",
-        r"write\s+(an?\s+)?announcement\s*(for|about)?",
+        r"write\s+(an?\s+)?(proper\s+)?announcement\s*(for|about|on)?",
         r"write", r"create", r"make", r"prepare",
         r"help\s+me\s+\w+",
         r"put\s+together",
+        r"an?\s+announcement\s*(with\s+this\s+image\.?)?",
+        r"with\s+this\s+image\.?",
         r"tell\s+him\s+in", r"tell\s+her\s+in", r"tell\s+them\s+in",
         r"\band\s+say\b", r"\band\s+tell\b",
         r"\bsay\b", r"\btell\b",
@@ -388,6 +410,9 @@ def parse_announce_command(text: str):
         r"\bthis\s+to\b", r"\bit\s+to\b",
         r"\bto\s+the\b", r"\bto\s+this\b",
         r"\bthe\s+following\b",
+        r"\blet\s+the\s+announcement\s+(just\s+)?be\b",
+        r"\bthe\s+announcement\s+(is|should\s+be|just\s+be)\b",
+        r"\bjust\s+be\b",
     ]
     for pattern in routing_patterns:
         content = re.sub(pattern, " ", content, flags=re.IGNORECASE)
@@ -623,12 +648,8 @@ def has_admin_role(member: discord.Member) -> bool:
 
 def parse_role_command(text: str):
     """
-    Detect give/remove role commands.
+    Detect give/remove role commands for a single user.
     Returns (action, user_id, role_id) or None.
-    Examples:
-      give @user the @role
-      remove @role from @user
-      give @user @role
     """
     action = None
     if re.search(r"\bgive\b|\badd\b|\bassign\b|\bgrant\b", text, re.IGNORECASE):
@@ -639,13 +660,171 @@ def parse_role_command(text: str):
     if not action:
         return None
 
-    user_match  = re.search(r"<@!?(\d+)>", text)
-    role_match  = re.search(r"<@&(\d+)>", text)
+    user_match = re.search(r"<@!?(\d+)>", text)
+    role_match = re.search(r"<@&(\d+)>", text)
 
     if not user_match or not role_match:
         return None
 
     return action, int(user_match.group(1)), int(role_match.group(1))
+
+
+def parse_mass_role_command(text: str):
+    """
+    Detect mass role operations.
+    Returns dict: { action, target_role_id, condition_role_id } or None.
+
+    Actions:
+      remove_all   — remove a role from everyone who has it
+      remove_if    — remove role_A from everyone who has role_B
+      give_all     — give a role to everyone in the server
+      give_if      — give role_A to everyone who has role_B
+
+    Examples:
+      remove @Role from everyone
+      strip @Role from all members
+      remove @Role from everyone who has @OtherRole
+      take @RoleA from all members with @RoleB
+      give @Role to everyone
+      give @Role to everyone with @OtherRole
+      assign @Role to all members who have @OtherRole
+    """
+    # Must have a role mention
+    role_matches = re.findall(r"<@&(\d+)>", text)
+    if not role_matches:
+        return None
+
+    # Must be a mass operation
+    if not re.search(
+        r"\beveryone\b|\ball\s+(members|players|users)\b|\ball\b",
+        text, re.IGNORECASE
+    ):
+        return None
+
+    result = {
+        "action": None,
+        "target_role_id": int(role_matches[0]),
+        "condition_role_id": int(role_matches[1]) if len(role_matches) > 1 else None,
+    }
+
+    # Conditional (has second role)
+    has_condition = bool(re.search(
+        r"\bwho\s+has\b|\bwith\b|\bwho\s+have\b|\bthat\s+have\b|\bthat\s+has\b",
+        text, re.IGNORECASE
+    ))
+
+    if re.search(r"\bgive\b|\bassign\b|\bgrant\b|\badd\b", text, re.IGNORECASE):
+        result["action"] = "give_if" if has_condition else "give_all"
+    elif re.search(r"\bremove\b|\bstrip\b|\btake\b|\brevoke\b", text, re.IGNORECASE):
+        result["action"] = "remove_if" if has_condition else "remove_all"
+    else:
+        return None
+
+    return result
+
+
+def parse_role_manage_command(text: str):
+    """
+    Detect role creation, deletion, renaming, recoloring, permission edits.
+    Returns dict: { action, role_id, name, color, permissions } or None.
+
+    Actions: create, delete, rename, recolor, edit_perms
+
+    Examples:
+      create role Veteran
+      create role Moderator with color #FF0000
+      delete role @OldRole
+      rename @Role to Senior Staff
+      change @Role color to green
+      recolor @Role to #FFD700
+      make @Role mentionable
+      make @Role not mentionable
+      make @Role hoisted
+    """
+    if not re.search(
+        r"\bcreate\s+role\b|\bmake\s+a?\s*role\b"
+        r"|\bdelete\s+role\b|\bremove\s+role\b"
+        r"|\brename\s+.*(role|<@&)\b"
+        r"|\brecolor\b|\bchange\s+.*color\b"
+        r"|\bmake\s+.*\b(mentionable|hoisted|pingable)\b"
+        r"|\bmake\s+.*\bnot\s+(mentionable|hoisted|pingable)\b",
+        text, re.IGNORECASE
+    ):
+        return None
+
+    result = {
+        "action": None,
+        "role_id": None,
+        "name": None,
+        "color": None,
+        "mentionable": None,
+        "hoisted": None,
+    }
+
+    role_match = re.search(r"<@&(\d+)>", text)
+    if role_match:
+        result["role_id"] = int(role_match.group(1))
+
+    # Color extraction — hex or color name
+    hex_match = re.search(r"#([0-9A-Fa-f]{6})", text)
+    if hex_match:
+        result["color"] = int(hex_match.group(1), 16)
+    else:
+        color_names = {
+            "red": 0xFF0000, "green": 0x00A550, "blue": 0x0000FF,
+            "gold": 0xFFD700, "yellow": 0xFFFF00, "orange": 0xFF6600,
+            "purple": 0x800080, "pink": 0xFF69B4, "white": 0xFFFFFF,
+            "black": 0x000001, "cyan": 0x00FFFF, "teal": 0x008080,
+            "silver": 0xC0C0C0, "grey": 0x808080, "gray": 0x808080,
+        }
+        for name, val in color_names.items():
+            if re.search(rf"\b{name}\b", text, re.IGNORECASE):
+                result["color"] = val
+                break
+
+    # Mentionable / hoisted
+    if re.search(r"\bnot\s+(mentionable|pingable)\b", text, re.IGNORECASE):
+        result["mentionable"] = False
+    elif re.search(r"\b(mentionable|pingable)\b", text, re.IGNORECASE):
+        result["mentionable"] = True
+
+    if re.search(r"\bnot\s+hoisted\b", text, re.IGNORECASE):
+        result["hoisted"] = False
+    elif re.search(r"\bhoisted\b", text, re.IGNORECASE):
+        result["hoisted"] = True
+
+    # Action: DELETE
+    if re.search(r"\bdelete\s+role\b|\bremove\s+role\b", text, re.IGNORECASE):
+        result["action"] = "delete"
+        return result
+
+    # Action: RENAME
+    rename_match = re.search(r"rename\s+(?:<@&\d+>|\S+)\s+to\s+(.+)$", text, re.IGNORECASE)
+    if rename_match:
+        result["action"] = "rename"
+        result["name"] = rename_match.group(1).strip()
+        return result
+
+    # Action: RECOLOR
+    if re.search(r"\brecolor\b|\bchange\s+.*color\b|\bcolor\s+.*to\b", text, re.IGNORECASE):
+        result["action"] = "recolor"
+        return result
+
+    # Action: EDIT PROPS (mentionable/hoisted)
+    if result["mentionable"] is not None or result["hoisted"] is not None:
+        result["action"] = "edit_props"
+        return result
+
+    # Action: CREATE
+    if re.search(r"\bcreate\s+role\b|\bmake\s+a?\s*role\b", text, re.IGNORECASE):
+        result["action"] = "create"
+        # Extract role name — everything after "role"
+        name_match = re.search(r"(?:role\s+)([\w\s\-]+?)(?:\s+with|\s+color|\s+#|$)", text, re.IGNORECASE)
+        if name_match:
+            result["name"] = name_match.group(1).strip()
+        return result
+
+    return None
 
 
 def parse_permission_command(text: str):
@@ -836,6 +1015,122 @@ def parse_create_command(text: str):
     return result
 
 
+def parse_edit_command(text: str):
+    """
+    Detect edit message commands using fully natural language.
+    Works with explicit commands AND pure feedback with no command words.
+
+    Returns dict: { mode, channel_id, message_id, instruction } or None.
+
+    Modes:
+      last      — edit the bot's last reply in this channel
+      id        — edit a specific message by its ID
+      announce  — edit the last announcement the bot sent in a channel
+
+    Examples — ALL of these work:
+      too many emojis
+      make it more formal
+      change the tone, more hype
+      that sounds off, fix it
+      remove the last sentence
+      way too long, shorten it
+      less emojis
+      more professional
+      edit last reply, less emojis
+      fix your last message
+      edit last announcement in <#channel>, make it shorter
+      edit message 123456789 — remove the last sentence
+    """
+
+    # Explicit edit/fix keywords
+    explicit = bool(re.search(
+        r"\bedit\b|\bupdate\b|\bchange\b|\bcorrect\b|\bfix\b|\brewrite\b|\brevise\b|\bshorten\b|\blonger\b",
+        text, re.IGNORECASE
+    ))
+
+    # Pure feedback patterns — no command word needed
+    pure_feedback = bool(re.search(
+        r"\btoo\s+(many|much|long|short|formal|casual|hype|stiff|wordy)\b"
+        r"|\bless\s+\w+\b|\bmore\s+\w+\b"
+        r"|\bsounds?\s+(off|wrong|bad|weird|stiff|too)\b"
+        r"|\bmake\s+it\b|\btone\s+(it|down|up)\b"
+        r"|\b(remove|add|drop)\s+the\b"
+        r"|\bway\s+too\b|\bnot\s+enough\b"
+        r"|\bfeel\s+(more|less)\b"
+        r"|\bthat\s+(phrase|word|line|sentence|part)\b",
+        text, re.IGNORECASE
+    ))
+
+    if not explicit and not pure_feedback:
+        return None
+
+    # Also require some message context unless it's pure feedback
+    if explicit and not re.search(r"\bmessage\b|\breply\b|\bannouncement\b|\blast\b|\bit\b", text, re.IGNORECASE):
+        return None
+
+    result = {
+        "mode": None,
+        "channel_id": None,
+        "message_id": None,
+        "instruction": text,  # pass full natural instruction to GPT
+    }
+
+    # Extract TARGET channel (where the message to edit lives)
+    # Support "in <#channel>" or just a bare channel mention
+    ch_match = re.search(r"(?:in\s+)?<#(\d+)>", text)
+    result["channel_id"] = int(ch_match.group(1)) if ch_match else None
+
+    # Mode: specific message ID — with optional channel
+    id_match = re.search(r"\bmessage\s+(\d{10,})\b", text, re.IGNORECASE)
+    if id_match:
+        result["mode"] = "id"
+        result["message_id"] = int(id_match.group(1))
+        # channel_id already extracted above — supports cross-channel
+        return result
+
+    # Mode: last announcement — supports cross-channel via <#channel>
+    if re.search(r"\bannouncement\b", text, re.IGNORECASE):
+        result["mode"] = "announce"
+        return result
+
+    # Default: last reply in current or specified channel
+    result["mode"] = "last"
+    return result
+
+
+async def ai_rewrite(original_text: str, instruction: str) -> str:
+    """Use GPT-4o to rewrite a message based on feedback/instruction."""
+    response = client_ai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an editor for the African Freefire Community (AFC) Discord bot. "
+                    "You will be given an original message and an instruction on how to improve it. "
+                    "Rewrite the message based on the instruction. "
+                    "Output ONLY the rewritten message — no explanations, no preamble, no quotes around it. "
+                    "Preserve all Discord formatting like **bold**, links, and mentions unless told otherwise. "
+                    "Keep the same general meaning and information unless told to change it."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Original message:\n{original_text}\n\nInstruction: {instruction}\n\nRewrite:"
+            }
+        ],
+        max_tokens=1024,
+        temperature=0.7,
+    )
+    return response.choices[0].message.content.strip()
+
+
+# Tracks last bot message per channel: {channel_id: message_id}
+last_bot_messages: dict[int, int] = {}
+# Tracks last bot announcement per channel: {channel_id: message_id}
+last_bot_announcements: dict[int, int] = {}
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
@@ -881,6 +1176,79 @@ async def _handle_message(message: discord.Message):
     # Strip the @mention
     user_text = message.content.replace(f"<@{bot.user.id}>", "").strip()
     username  = message.author.display_name
+
+    # ── Edit command check FIRST — must run before announcement to avoid confusion ──
+    if has_admin_role(message.author):
+        edit_cmd = parse_edit_command(user_text)
+        if edit_cmd:
+            mode        = edit_cmd["mode"]
+            instruction = edit_cmd["instruction"]
+            edit_ch_id  = edit_cmd["channel_id"] or message.channel.id
+            edit_ch     = bot.get_channel(edit_ch_id) or message.channel
+
+            async def apply_edit(target_msg: discord.Message):
+                if target_msg.author.id != bot.user.id:
+                    await message.reply("❌ I can only edit my own messages.", mention_author=True)
+                    return
+                if target_msg.embeds and target_msg.embeds[0].description:
+                    original = target_msg.embeds[0].description
+                    is_embed = True
+                    old_embed = target_msg.embeds[0]
+                else:
+                    original = target_msg.content or ""
+                    is_embed = False
+                if not original:
+                    await message.reply("❌ That message has no text content I can edit.", mention_author=True)
+                    return
+                async with message.channel.typing():
+                    new_text = await ai_rewrite(original, instruction)
+                if is_embed:
+                    new_embed = discord.Embed(
+                        title=old_embed.title,
+                        description=new_text,
+                        color=old_embed.color
+                    )
+                    new_embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com  •  (edited)")
+                    new_embed.timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                    await target_msg.edit(embed=new_embed)
+                else:
+                    await target_msg.edit(content=new_text)
+                await message.reply("✅ Done! Message updated.", mention_author=True)
+
+            try:
+                if mode == "id":
+                    msg_id = edit_cmd["message_id"]
+                    try:
+                        target_msg = await edit_ch.fetch_message(msg_id)
+                    except discord.NotFound:
+                        await message.reply("❌ Couldn't find that message. Check the ID is correct.", mention_author=True)
+                        return
+                    await apply_edit(target_msg)
+                elif mode == "announce":
+                    msg_id = last_bot_announcements.get(edit_ch_id)
+                    if not msg_id:
+                        await message.reply(
+                            f"❌ No announcement record for {edit_ch.mention}. Use the message ID instead.",
+                            mention_author=True
+                        )
+                        return
+                    target_msg = await edit_ch.fetch_message(msg_id)
+                    await apply_edit(target_msg)
+                elif mode == "last":
+                    msg_id = last_bot_messages.get(message.channel.id)
+                    if not msg_id:
+                        await message.reply(
+                            "❌ No record of my last message here. Use the message ID instead.",
+                            mention_author=True
+                        )
+                        return
+                    target_msg = await message.channel.fetch_message(msg_id)
+                    await apply_edit(target_msg)
+            except discord.Forbidden:
+                await message.reply("❌ I don't have permission to edit that message.", mention_author=True)
+            except Exception as e:
+                await message.reply(f"⚠️ Couldn't edit the message. Error: {e}", mention_author=True)
+            return
 
     # ── Announcement command ─────────────────────────────────────────────────
     announce = parse_announce_command(user_text)
@@ -931,34 +1299,152 @@ async def _handle_message(message: discord.Message):
                 ping_content = None
                 use_embed = True
 
-        # Collect any attached media files to forward
+        # Collect attached files grouped by type
         import io
-        files_to_send = []
+        image_files = []
+        other_files = []
         if message.attachments:
             for attachment in message.attachments:
                 file_bytes = await download_attachment(attachment)
-                files_to_send.append(
-                    discord.File(fp=io.BytesIO(file_bytes), filename=attachment.filename)
-                )
+                att_type = get_attachment_type(attachment.filename)
+                if att_type == "image":
+                    image_files.append((attachment.filename, file_bytes))
+                else:
+                    other_files.append((attachment.filename, file_bytes))
+
+        # ── Multi-part layout detection ──────────────────────────────────────
+        # If admin describes an order like "image then text then image" we send
+        # multiple messages to the target channel to achieve the layout
+        layout_keywords = ["above", "below", "middle", "between", "then", "followed by",
+                           "first image", "second image", "image then text", "text then image",
+                           "top", "bottom", "after the text", "before the text"]
+        is_multi_layout = len(image_files) > 1 or any(kw in user_text.lower() for kw in layout_keywords)
+
+        async with message.channel.typing():
+            if should_generate:
+                await message.reply("✍️ Generating your announcement...", mention_author=True)
+                try:
+                    ann_data = await generate_announcement(msg_content, target_user_id)
+                    embed, ping_content = build_embed(ann_data)
+                except Exception as e:
+                    await message.reply(f"⚠️ Couldn't generate the announcement. Error: {e}", mention_author=True)
+                    return
+            else:
+                if not msg_content and not image_files:
+                    await message.reply(
+                        "❓ What should I send? Please include the message content in your command.",
+                        mention_author=True
+                    )
+                    return
+                plain_text = f"<@{target_user_id}> {msg_content}" if target_user_id else msg_content
+                embed = discord.Embed(description=plain_text, color=EMBED_COLORS["announcement"])
+                embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+                embed.timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                ping_content = None
 
         try:
             allowed = discord.AllowedMentions(everyone=True, roles=True, users=True)
-            if files_to_send:
-                await target_channel.send(
-                    content=ping_content,
-                    embed=embed,
-                    files=files_to_send,
-                    allowed_mentions=allowed
+            sent = None
+
+            if is_multi_layout and image_files:
+                # Detect layout order from user instruction
+                # Default: all images first, then embed text
+                text_lower = user_text.lower()
+
+                # Parse position of text relative to images
+                if re.search(r"\bimage\s+(above|first|on\s+top|before\s+text)\b"
+                             r"|\babove\s+the\s+text\b|\bimage\s+then\s+text\b"
+                             r"|\btop\b.*\bimage\b", text_lower):
+                    order = "images_first"
+                elif re.search(r"\bimage\s+(below|after|at\s+the\s+bottom|after\s+text)\b"
+                               r"|\bbelow\s+the\s+text\b|\btext\s+then\s+image\b"
+                               r"|\bbottom\b.*\bimage\b", text_lower):
+                    order = "text_first"
+                elif re.search(r"\bmiddle\b|\bbetween\b|\bsandwich\b", text_lower):
+                    order = "sandwich"  # image, text, image
+                else:
+                    order = "images_first"  # default
+
+                if order == "images_first":
+                    # Send all images first, then the embed
+                    for fname, fbytes in image_files:
+                        await target_channel.send(
+                            file=discord.File(fp=io.BytesIO(fbytes), filename=fname),
+                            allowed_mentions=allowed
+                        )
+                        await asyncio.sleep(0.5)
+                    sent = await target_channel.send(
+                        content=ping_content, embed=embed, allowed_mentions=allowed
+                    )
+                    # Send any remaining non-image files
+                    for fname, fbytes in other_files:
+                        await target_channel.send(
+                            file=discord.File(fp=io.BytesIO(fbytes), filename=fname)
+                        )
+
+                elif order == "text_first":
+                    # Send embed first, then all images
+                    sent = await target_channel.send(
+                        content=ping_content, embed=embed, allowed_mentions=allowed
+                    )
+                    for fname, fbytes in image_files:
+                        await target_channel.send(
+                            file=discord.File(fp=io.BytesIO(fbytes), filename=fname),
+                            allowed_mentions=allowed
+                        )
+                        await asyncio.sleep(0.5)
+
+                elif order == "sandwich":
+                    # First image, then embed, then remaining images
+                    first_fname, first_fbytes = image_files[0]
+                    await target_channel.send(
+                        file=discord.File(fp=io.BytesIO(first_fbytes), filename=first_fname),
+                        allowed_mentions=allowed
+                    )
+                    await asyncio.sleep(0.5)
+                    sent = await target_channel.send(
+                        content=ping_content, embed=embed, allowed_mentions=allowed
+                    )
+                    for fname, fbytes in image_files[1:]:
+                        await asyncio.sleep(0.5)
+                        await target_channel.send(
+                            file=discord.File(fp=io.BytesIO(fbytes), filename=fname),
+                            allowed_mentions=allowed
+                        )
+
+            elif image_files and not is_multi_layout:
+                # Single image — attach to the embed message
+                first_fname, first_fbytes = image_files[0]
+                files_to_send = [discord.File(fp=io.BytesIO(first_fbytes), filename=first_fname)]
+                for fname, fbytes in image_files[1:]:
+                    files_to_send.append(discord.File(fp=io.BytesIO(fbytes), filename=fname))
+                for fname, fbytes in other_files:
+                    files_to_send.append(discord.File(fp=io.BytesIO(fbytes), filename=fname))
+                sent = await target_channel.send(
+                    content=ping_content, embed=embed,
+                    files=files_to_send, allowed_mentions=allowed
                 )
             else:
-                await target_channel.send(
-                    content=ping_content,
-                    embed=embed,
-                    allowed_mentions=allowed
-                )
+                # No attachments — just send the embed
+                other_fs = [discord.File(fp=io.BytesIO(fb), filename=fn) for fn, fb in other_files]
+                if other_fs:
+                    sent = await target_channel.send(
+                        content=ping_content, embed=embed,
+                        files=other_fs, allowed_mentions=allowed
+                    )
+                else:
+                    sent = await target_channel.send(
+                        content=ping_content, embed=embed, allowed_mentions=allowed
+                    )
 
-            media_note = f" with {len(files_to_send)} file(s)" if files_to_send else ""
-            await message.reply(f"✅ Announcement sent to <#{target_channel_id}>{media_note}.", mention_author=True)
+            if sent:
+                last_bot_announcements[target_channel.id] = sent.id
+
+            layout_note = f" (multi-part layout)" if is_multi_layout and image_files else ""
+            await message.reply(
+                f"✅ Announcement sent to <#{target_channel_id}>{layout_note}.",
+                mention_author=True
+            )
         except discord.Forbidden:
             await message.reply(
                 f"❌ I don't have permission to send messages in <#{target_channel_id}>. "
@@ -1048,7 +1534,131 @@ async def _handle_message(message: discord.Message):
                 await message.reply("❌ I don't have permission to create channels. Make sure I have the Administrator role.", mention_author=True)
             return
 
-        # ── Give / Remove role ───────────────────────────────────────────────
+        # ── Mass role operations ──────────────────────────────────────────────
+        mass_role_cmd = parse_mass_role_command(user_text)
+        if mass_role_cmd:
+            action           = mass_role_cmd["action"]
+            target_role_id   = mass_role_cmd["target_role_id"]
+            condition_role_id = mass_role_cmd["condition_role_id"]
+            guild            = message.guild
+            target_role      = guild.get_role(target_role_id)
+
+            if not target_role:
+                await message.reply("❌ Couldn't find that role.", mention_author=True)
+                return
+
+            condition_role = None
+            if condition_role_id:
+                condition_role = guild.get_role(condition_role_id)
+                if not condition_role:
+                    await message.reply("❌ Couldn't find the condition role.", mention_author=True)
+                    return
+
+            # Build confirmation message
+            if action == "remove_all":
+                summary = f"Remove **@{target_role.name}** from **everyone** who has it"
+            elif action == "remove_if":
+                summary = f"Remove **@{target_role.name}** from everyone who has **@{condition_role.name}**"
+            elif action == "give_all":
+                summary = f"Give **@{target_role.name}** to **every member** in the server"
+            elif action == "give_if":
+                summary = f"Give **@{target_role.name}** to everyone who has **@{condition_role.name}**"
+            else:
+                summary = "Unknown action"
+
+            embed = discord.Embed(
+                title="⚠️ Confirm Mass Role Action",
+                description=f"{summary}\n\n**This will affect multiple members.**\n\nReply `yes` to confirm or `no` to cancel.",
+                color=EMBED_COLORS["urgent"]
+            )
+            embed.set_footer(text=f"Requested by {message.author.display_name} • Expires in 30 seconds")
+            await message.reply(embed=embed, mention_author=True)
+
+            def mass_check(m):
+                return (
+                    m.author.id == message.author.id
+                    and m.channel.id == message.channel.id
+                    and m.content.lower().strip() in ("yes", "no", "y", "n")
+                )
+
+            try:
+                confirm = await bot.wait_for("message", check=mass_check, timeout=30.0)
+                if confirm.content.lower().strip() not in ("yes", "y"):
+                    await message.channel.send("❌ Mass role action cancelled.")
+                    return
+            except asyncio.TimeoutError:
+                await message.channel.send("⏱️ Confirmation timed out. Action cancelled.")
+                return
+
+            # Execute — fetch all members and apply
+            await message.channel.send(f"⚙️ Working on it... this may take a moment for large servers.")
+            affected = 0
+            failed   = 0
+
+            try:
+                await guild.chunk()  # ensure member cache is full
+            except Exception:
+                pass
+
+            for member in guild.members:
+                if member.bot:
+                    continue
+
+                # Determine if this member should be affected
+                if action in ("remove_all", "give_all"):
+                    should_act = True
+                elif action == "remove_if":
+                    should_act = condition_role in member.roles
+                elif action == "give_if":
+                    should_act = condition_role in member.roles
+                else:
+                    should_act = False
+
+                if not should_act:
+                    continue
+
+                # Skip if already has/doesn't have the role
+                if action in ("remove_all", "remove_if") and target_role not in member.roles:
+                    continue
+                if action in ("give_all", "give_if") and target_role in member.roles:
+                    continue
+
+                try:
+                    success = False
+                    retries = 0
+                    while not success and retries < 5:
+                        try:
+                            if action in ("remove_all", "remove_if"):
+                                await member.remove_roles(target_role, reason=f"AFC Bot mass action — by {message.author}")
+                            else:
+                                await member.add_roles(target_role, reason=f"AFC Bot mass action — by {message.author}")
+                            affected += 1
+                            success = True
+                            await asyncio.sleep(0.8)  # safe delay between each member
+                        except discord.HTTPException as e:
+                            if e.status == 429:  # rate limited
+                                retry_after = float(e.response.headers.get("Retry-After", 2))
+                                await asyncio.sleep(retry_after + 0.5)
+                                retries += 1
+                            else:
+                                failed += 1
+                                success = True  # skip this member
+                except Exception:
+                    failed += 1
+
+            verb = "removed from" if action in ("remove_all", "remove_if") else "given to"
+            result_embed = discord.Embed(
+                description=(
+                    f"✅ **@{target_role.name}** {verb} **{affected}** member(s)."
+                    + (f"\n⚠️ Failed for {failed} member(s)." if failed else "")
+                ),
+                color=EMBED_COLORS["general"]
+            )
+            result_embed.set_footer(text=f"Action by {message.author.display_name}")
+            await message.channel.send(embed=result_embed)
+            return
+
+        # ── Give / Remove role (single user) ─────────────────────────────────
         role_cmd = parse_role_command(user_text)
         if role_cmd:
             action, target_user_id, target_role_id = role_cmd
@@ -1082,7 +1692,101 @@ async def _handle_message(message: discord.Message):
                 await message.reply("❌ I don't have permission to manage that role. Make sure my role is above it in the role list.", mention_author=True)
             return
 
-        # ── Edit channel / category permissions ──────────────────────────────
+        # ── Role management (create, delete, rename, recolor, edit props) ────
+        role_manage_cmd = parse_role_manage_command(user_text)
+        if role_manage_cmd:
+            action   = role_manage_cmd["action"]
+            role_id  = role_manage_cmd["role_id"]
+            guild    = message.guild
+
+            try:
+                if action == "create":
+                    name  = role_manage_cmd["name"] or "New Role"
+                    color = discord.Color(role_manage_cmd["color"]) if role_manage_cmd["color"] else discord.Color.default()
+                    mentionable = role_manage_cmd["mentionable"] or False
+                    hoisted     = role_manage_cmd["hoisted"] or False
+                    new_role = await guild.create_role(
+                        name=name, color=color,
+                        mentionable=mentionable, hoist=hoisted,
+                        reason=f"AFC Bot — created by {message.author}"
+                    )
+                    embed = discord.Embed(
+                        description=f"✅ Role **{new_role.name}** created — {new_role.mention}",
+                        color=new_role.color
+                    )
+                    embed.set_footer(text=f"Created by {message.author.display_name}")
+                    await message.reply(embed=embed, mention_author=True)
+
+                elif action == "delete":
+                    role = guild.get_role(role_id)
+                    if not role:
+                        await message.reply("❌ Couldn't find that role.", mention_author=True)
+                        return
+                    role_name = role.name
+                    await role.delete(reason=f"AFC Bot — deleted by {message.author}")
+                    embed = discord.Embed(
+                        description=f"🗑️ Role **{role_name}** has been deleted.",
+                        color=EMBED_COLORS["urgent"]
+                    )
+                    embed.set_footer(text=f"Action by {message.author.display_name}")
+                    await message.reply(embed=embed, mention_author=True)
+
+                elif action == "rename":
+                    role = guild.get_role(role_id)
+                    if not role:
+                        await message.reply("❌ Couldn't find that role.", mention_author=True)
+                        return
+                    old_name = role.name
+                    await role.edit(name=role_manage_cmd["name"], reason=f"AFC Bot — renamed by {message.author}")
+                    embed = discord.Embed(
+                        description=f"✅ Role **{old_name}** renamed to **{role.name}**.",
+                        color=role.color
+                    )
+                    embed.set_footer(text=f"Action by {message.author.display_name}")
+                    await message.reply(embed=embed, mention_author=True)
+
+                elif action == "recolor":
+                    role = guild.get_role(role_id)
+                    if not role:
+                        await message.reply("❌ Couldn't find that role.", mention_author=True)
+                        return
+                    new_color = discord.Color(role_manage_cmd["color"]) if role_manage_cmd["color"] else discord.Color.default()
+                    await role.edit(color=new_color, reason=f"AFC Bot — recolored by {message.author}")
+                    embed = discord.Embed(
+                        description=f"✅ Role **{role.name}** color updated.",
+                        color=new_color
+                    )
+                    embed.set_footer(text=f"Action by {message.author.display_name}")
+                    await message.reply(embed=embed, mention_author=True)
+
+                elif action == "edit_props":
+                    role = guild.get_role(role_id)
+                    if not role:
+                        await message.reply("❌ Couldn't find that role.", mention_author=True)
+                        return
+                    kwargs = {}
+                    if role_manage_cmd["mentionable"] is not None:
+                        kwargs["mentionable"] = role_manage_cmd["mentionable"]
+                    if role_manage_cmd["hoisted"] is not None:
+                        kwargs["hoist"] = role_manage_cmd["hoisted"]
+                    await role.edit(**kwargs, reason=f"AFC Bot — edited by {message.author}")
+                    changes = []
+                    if "mentionable" in kwargs:
+                        changes.append(f"mentionable: **{'yes' if kwargs['mentionable'] else 'no'}**")
+                    if "hoist" in kwargs:
+                        changes.append(f"hoisted: **{'yes' if kwargs['hoist'] else 'no'}**")
+                    embed = discord.Embed(
+                        description=f"✅ Role **{role.name}** updated — {', '.join(changes)}.",
+                        color=role.color
+                    )
+                    embed.set_footer(text=f"Action by {message.author.display_name}")
+                    await message.reply(embed=embed, mention_author=True)
+
+            except discord.Forbidden:
+                await message.reply("❌ I don't have permission to manage that role. Make sure my role is above it in the role list.", mention_author=True)
+            except Exception as e:
+                await message.reply(f"⚠️ Something went wrong with the role action. Error: {e}", mention_author=True)
+            return
         perm_cmd = parse_permission_command(user_text)
         if perm_cmd:
             ch_id, is_category, target_type, target_role_id, perm_name, allow = perm_cmd
@@ -1201,7 +1905,13 @@ async def _handle_message(message: discord.Message):
                 color=EMBED_COLORS["urgent"]
             )
             embed.set_footer(text=f"Requested by {message.author.display_name} • Expires in 30 seconds")
-            await message.reply(embed=embed, mention_author=True)
+            confirm_bot_msg = await message.reply(embed=embed, mention_author=True)
+
+            # IDs of all confirmation-related messages to clean up after
+            cleanup_ids = {
+                message.id,           # admin's original purge command
+                confirm_bot_msg.id,   # bot's confirmation request
+            }
 
             def purge_check(m):
                 return (
@@ -1212,11 +1922,30 @@ async def _handle_message(message: discord.Message):
 
             try:
                 confirm = await bot.wait_for("message", check=purge_check, timeout=30.0)
+                cleanup_ids.add(confirm.id)  # admin's yes/no reply
+
                 if confirm.content.lower().strip() not in ("yes", "y"):
-                    await message.channel.send("❌ Purge cancelled.")
+                    cancelled_msg = await message.channel.send("❌ Purge cancelled.")
+                    cleanup_ids.add(cancelled_msg.id)
+                    # Clean up all confirmation messages
+                    await asyncio.sleep(2)
+                    for mid in cleanup_ids:
+                        try:
+                            m = await message.channel.fetch_message(mid)
+                            await m.delete()
+                        except Exception:
+                            pass
                     return
             except asyncio.TimeoutError:
-                await message.channel.send("⏱️ Confirmation timed out. Purge cancelled.")
+                timeout_msg = await message.channel.send("⏱️ Confirmation timed out. Purge cancelled.")
+                cleanup_ids.add(timeout_msg.id)
+                await asyncio.sleep(2)
+                for mid in cleanup_ids:
+                    try:
+                        m = await message.channel.fetch_message(mid)
+                        await m.delete()
+                    except Exception:
+                        pass
                 return
 
             # Execute the purge in a background task so the bot stays responsive
@@ -1243,43 +1972,62 @@ async def _handle_message(message: discord.Message):
 
                 try:
                     if mode == "count":
-                        deleted = await target_ch.purge(limit=amount)
+                        # Exclude confirmation messages from the count by filtering
+                        def not_cleanup(m): return m.id not in cleanup_ids
+                        deleted = await target_ch.purge(limit=amount, check=not_cleanup)
                         deleted_count = len(deleted)
 
                     elif mode == "keyword":
-                        def kw_check(m): return keyword.lower() in m.content.lower()
+                        def kw_check(m): return keyword.lower() in m.content.lower() and m.id not in cleanup_ids
                         deleted = await target_ch.purge(limit=None, check=kw_check)
                         deleted_count = len(deleted)
                         async for old_msg in target_ch.history(limit=None):
+                            if old_msg.id in cleanup_ids:
+                                continue
                             if keyword.lower() in old_msg.content.lower():
                                 if await safe_delete(old_msg):
                                     deleted_count += 1
                                     await asyncio.sleep(1.2)
 
                     elif mode == "user":
-                        def user_check(m): return m.author.id == pu_user_id
+                        def user_check(m): return m.author.id == pu_user_id and m.id not in cleanup_ids
                         deleted = await target_ch.purge(limit=None, check=user_check)
                         deleted_count = len(deleted)
                         async for old_msg in target_ch.history(limit=None):
+                            if old_msg.id in cleanup_ids:
+                                continue
                             if old_msg.author.id == pu_user_id:
                                 if await safe_delete(old_msg):
                                     deleted_count += 1
                                     await asyncio.sleep(1.2)
 
                     elif mode == "all":
-                        deleted = await target_ch.purge(limit=None)
+                        def not_cleanup_check(m): return m.id not in cleanup_ids
+                        deleted = await target_ch.purge(limit=None, check=not_cleanup_check)
                         deleted_count = len(deleted)
                         async for old_msg in target_ch.history(limit=None):
+                            if old_msg.id in cleanup_ids:
+                                continue
                             if await safe_delete(old_msg):
                                 deleted_count += 1
                                 await asyncio.sleep(1.2)
 
+                    # Send result, then clean up all confirmation messages + result after 4 seconds
                     result_embed = discord.Embed(
                         description=f"✅ **{deleted_count}** message(s) deleted from {target_ch.mention}.",
                         color=EMBED_COLORS["general"]
                     )
-                    result_embed.set_footer(text=f"Action by {message.author.display_name}")
-                    await message.channel.send(embed=result_embed)
+                    result_embed.set_footer(text=f"Action by {message.author.display_name} • This log will self-delete in 4s")
+                    result_msg = await message.channel.send(embed=result_embed)
+
+                    # Wait then silently delete all confirmation/log messages
+                    await asyncio.sleep(4)
+                    for mid in list(cleanup_ids) + [result_msg.id]:
+                        try:
+                            m = await message.channel.fetch_message(mid)
+                            await m.delete()
+                        except Exception:
+                            pass
 
                 except discord.Forbidden:
                     await message.channel.send("❌ I don't have permission to delete messages in that channel.")
@@ -1375,7 +2123,8 @@ async def _handle_message(message: discord.Message):
             reply = f"⚠️ Something went wrong. Please try again or contact info@africanfreefirecommunity.com\nError: {exc}"
             needs_support = False
 
-    await message.reply(reply, mention_author=True)
+    sent_reply = await message.reply(reply, mention_author=True)
+    last_bot_messages[message.channel.id] = sent_reply.id
     if needs_support:
         await send_support_redirect(message)
 
