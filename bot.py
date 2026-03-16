@@ -1076,16 +1076,26 @@ def parse_edit_command(text: str):
     }
 
     # Extract TARGET channel (where the message to edit lives)
-    # Support "in <#channel>" or just a bare channel mention
     ch_match = re.search(r"(?:in\s+)?<#(\d+)>", text)
     result["channel_id"] = int(ch_match.group(1)) if ch_match else None
 
-    # Mode: specific message ID — with optional channel
-    id_match = re.search(r"\bmessage\s+(\d{10,})\b", text, re.IGNORECASE)
+    # Mode: specific message ID
+    # Handles: message 12345, message <12345>, message id 12345, with the id <12345>
+    id_match = re.search(
+        r"(?:message\s+(?:with\s+(?:the\s+)?id\s+)?|message\s+id\s+|id\s+)"
+        r"<?(\d{10,})>?",
+        text, re.IGNORECASE
+    )
+    # Also catch bare angle-bracket wrapped IDs like <1483149741188579399>
+    if not id_match:
+        id_match = re.search(r"<(\d{15,})>", text)
+    # Also catch plain long numbers anywhere in the text
+    if not id_match:
+        id_match = re.search(r"\b(\d{17,19})\b", text)
+
     if id_match:
         result["mode"] = "id"
         result["message_id"] = int(id_match.group(1))
-        # channel_id already extracted above — supports cross-channel
         return result
 
     # Mode: last announcement — supports cross-channel via <#channel>
@@ -1093,7 +1103,8 @@ def parse_edit_command(text: str):
         result["mode"] = "announce"
         return result
 
-    # Default: last reply in current or specified channel
+    # Default: last reply
+    # If a channel is specified, look for last bot message in THAT channel
     result["mode"] = "last"
     return result
 
@@ -1235,14 +1246,22 @@ async def _handle_message(message: discord.Message):
                     target_msg = await edit_ch.fetch_message(msg_id)
                     await apply_edit(target_msg)
                 elif mode == "last":
-                    msg_id = last_bot_messages.get(message.channel.id)
+                    # If a target channel was specified, look for last message there
+                    # Otherwise fall back to current channel
+                    lookup_channel_id = edit_ch_id if edit_ch_id != message.channel.id else message.channel.id
+                    msg_id = (
+                        last_bot_announcements.get(lookup_channel_id)
+                        or last_bot_messages.get(lookup_channel_id)
+                        or last_bot_messages.get(message.channel.id)
+                    )
                     if not msg_id:
                         await message.reply(
-                            "❌ No record of my last message here. Use the message ID instead.",
+                            f"❌ No record of my last message in {edit_ch.mention}. "
+                            "Use the message ID directly — right-click the message → Copy Message ID.",
                             mention_author=True
                         )
                         return
-                    target_msg = await message.channel.fetch_message(msg_id)
+                    target_msg = await edit_ch.fetch_message(msg_id)
                     await apply_edit(target_msg)
             except discord.Forbidden:
                 await message.reply("❌ I don't have permission to edit that message.", mention_author=True)
