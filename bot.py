@@ -350,6 +350,15 @@ def parse_announce_command(text: str):
     if not channel_match:
         return None
 
+    # ── PURGE GUARD — never treat delete/purge/clear commands as announcements ──
+    if re.search(
+        r"\bdelete\s+messages\b|\bpurge\b|\bclear\s+messages\b"
+        r"|\bremove\s+messages\b|\bwipe\s+messages\b"
+        r"|\bdelete\s+all\s+messages\b|\bdelete\s+messages\s+from\b",
+        text, re.IGNORECASE
+    ):
+        return None
+
     # ── EDIT GUARD — never treat edit/fix/rewrite commands as announcements ──
     if re.search(
         r"\bedit\s+(this\s+)?message\b|\bedit\s+message\s+\d+\b"
@@ -931,9 +940,9 @@ def parse_purge_command(text: str):
         result["mode"] = "all"
         return result
 
-    # Mode: USER
+    # Mode: USER — "delete messages from @user" or "delete messages from this user @user"
     user_match = re.search(r"<@!?(\d+)>", text)
-    if user_match and re.search(r"\bfrom\b|\bby\b", text, re.IGNORECASE):
+    if user_match and re.search(r"\bfrom\b|\bby\b|\bthis\s+user\b|\buser\b", text, re.IGNORECASE):
         result["mode"] = "user"
         result["user_id"] = int(user_match.group(1))
         return result
