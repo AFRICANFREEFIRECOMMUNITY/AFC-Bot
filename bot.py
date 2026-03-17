@@ -360,6 +360,13 @@ def parse_announce_command(text: str):
     ):
         return None
 
+    # ── ANNOUNCEMENT GUARD — if user explicitly says NOT editing, force announcement ──
+    # Also skip edit detection entirely if "formulate" or "announcement" appear before channel
+    is_explicit_announcement = bool(re.search(
+        r"\bformulate\b|\bannouncement\b|\bnot\s+editing\b|\bnew\s+message\b",
+        text, re.IGNORECASE
+    ))
+
     keywords = ["go to", "announce", "send", "tell", "say", "post", "message", "formulate",
                 "write", "draft", "create", "generate", "help me", "make", "compose",
                 "craft", "prepare", "put together", "please"]
@@ -1042,6 +1049,16 @@ def parse_edit_command(text: str):
       edit message 123456789 — remove the last sentence
     """
 
+    # ── ANNOUNCEMENT GUARD — never fire on clear announcement commands ────────
+    if re.search(
+        r"\bformulate\s+(an?\s+)?announcement\b"
+        r"|\bnot\s+editing\b|\bnew\s+announcement\b"
+        r"|\bsend\s+(an?\s+)?announcement\b"
+        r"|\bformulate\s+and\s+send\b",
+        text, re.IGNORECASE
+    ):
+        return None
+
     # Explicit edit/fix keywords
     explicit = bool(re.search(
         r"\bedit\b|\bupdate\b|\bchange\b|\bcorrect\b|\bfix\b|\brewrite\b|\brevise\b|\bshorten\b|\blonger\b",
@@ -1080,18 +1097,18 @@ def parse_edit_command(text: str):
     result["channel_id"] = int(ch_match.group(1)) if ch_match else None
 
     # Mode: specific message ID
-    # Handles: message 12345, message <12345>, message id 12345, with the id <12345>
+    # First strip all channel/user mentions so their IDs don't get confused as message IDs
+    text_no_mentions = re.sub(r"<[#@!&]\d+>", "", text)
+
     id_match = re.search(
         r"(?:message\s+(?:with\s+(?:the\s+)?id\s+)?|message\s+id\s+|id\s+)"
         r"<?(\d{10,})>?",
-        text, re.IGNORECASE
+        text_no_mentions, re.IGNORECASE
     )
-    # Also catch bare angle-bracket wrapped IDs like <1483149741188579399>
     if not id_match:
-        id_match = re.search(r"<(\d{15,})>", text)
-    # Also catch plain long numbers anywhere in the text
+        id_match = re.search(r"<(\d{15,})>", text_no_mentions)
     if not id_match:
-        id_match = re.search(r"\b(\d{17,19})\b", text)
+        id_match = re.search(r"\b(\d{17,19})\b", text_no_mentions)
 
     if id_match:
         result["mode"] = "id"
