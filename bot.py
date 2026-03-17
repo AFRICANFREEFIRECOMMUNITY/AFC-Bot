@@ -882,11 +882,17 @@ def parse_permission_command(text: str):
 
 def parse_delete_command(text: str):
     """
-    Detect delete channel commands.
+    Detect delete CHANNEL commands only.
     Returns channel_id or None.
     """
-    if not re.search(r"\bdelete\b|\bremove channel\b", text, re.IGNORECASE):
+    # Must explicitly say "channel" or "remove channel" — not just "delete messages"
+    if not re.search(r"\bdelete\s+(the\s+)?channel\b|\bremove\s+channel\b|\bdelete\s+<#\d+>\s*$", text, re.IGNORECASE):
         return None
+
+    # Never fire if talking about messages
+    if re.search(r"\bmessages?\b|\bpurge\b|\bclear\b", text, re.IGNORECASE):
+        return None
+
     ch = re.search(r"<#(\d+)>", text)
     if ch:
         return int(ch.group(1))
@@ -1925,7 +1931,7 @@ async def _handle_message(message: discord.Message):
                 pending_deletions.pop(message.id, None)
             return
 
-        # ── Purge messages ────────────────────────────────────────────────────
+        # ── Purge messages (MUST come before delete channel check) ───────────
         purge_cmd = parse_purge_command(user_text)
         if purge_cmd:
             mode       = purge_cmd["mode"]
