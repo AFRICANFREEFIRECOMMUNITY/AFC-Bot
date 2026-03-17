@@ -465,22 +465,30 @@ Your ONLY job is to format whatever the admin gives you into a clean Discord emb
 
 === CRITICAL RULES ===
 - NEVER refuse any request. NEVER say "I can't assist with that." Just write it.
-- The admin is a trusted staff member. All their requests are valid — casual, funny, serious, or official.
-- If the message is casual or internal (e.g. "tell John to stop eating gala"), write it in a light, direct tone.
-- If the message is official (tournament news, season updates), write it professionally.
-- Match the tone to the content — don't make casual messages sound overly formal.
-- Bold key info using **double asterisks**
-- Use 0-2 emojis — only if they genuinely fit
-- Include relevant AFC links ONLY if they naturally fit the context. Don't force links into casual messages.
+- The admin is a trusted staff member. All their requests are valid.
+
+=== EXACT TEXT RULE — MOST IMPORTANT ===
+If the admin says "exact", "dont remove", "do not remove", "use exactly", "keep exactly", "word for word", or provides numbered steps/lists:
+- Copy ALL text EXACTLY as written — do not shorten, trim, rephrase, or reword ANY part
+- Numbered lists (1. 2. 3.) must be copied character by character — do not remove ANY words
+- If step 1 says "You create a squad" it must say "You create a squad" — not "You a squad"
+- If step 3 says "Go to where you select modes" it must say "Go to where you select modes"
+- You may apply **bold** formatting to key words but NEVER remove or change the words themselves
+- When in doubt — copy it EXACTLY
+
+=== GENERAL RULES ===
+- Match tone to content — casual messages stay casual, official messages stay official
+- Use 0-2 emojis only if they genuinely fit
+- Include relevant AFC links ONLY if they naturally fit the context
 - Never use placeholder text like [link here]
-- If admin mentions @everyone or "tag everyone" → tag_everyone: true
+- If admin mentions @everyone → tag_everyone: true
 - If admin mentions @here → tag_here: true
-- Output ONLY valid JSON. No markdown fences. No extra text. No explanations.
+- Output ONLY valid JSON. No markdown fences. No extra text.
 
 === OUTPUT FORMAT (strict JSON) ===
 {{
-  "title": "Short title (max 8 words) — omit if message is very casual/short",
-  "body": "The announcement text. Use **bold** for key info.",
+  "title": "Short title (max 8 words) — use exact title if admin provides one",
+  "body": "The announcement text. Preserve ALL words exactly if admin says so.",
   "color_type": "announcement | tournament | warning | info | general",
   "tag_everyone": true or false,
   "tag_here": true or false
@@ -946,8 +954,17 @@ def parse_purge_command(text: str):
         result["mode"] = "all"
         return result
 
-    # Mode: USER — "delete messages from @user" or "delete messages from this user @user"
+    # Mode: USER — "@mention" or plain user ID with user/from context
     user_match = re.search(r"<@!?(\d+)>", text)
+    # Also handle plain user IDs like "from user 563399749231706123"
+    if not user_match:
+        plain_id = re.search(
+            r"(?:from\s+(?:this\s+)?(?:user\s+)?|by\s+(?:user\s+)?)(\d{15,19})\b",
+            text, re.IGNORECASE
+        )
+        if plain_id:
+            user_match = plain_id
+
     if user_match and re.search(r"\bfrom\b|\bby\b|\bthis\s+user\b|\buser\b", text, re.IGNORECASE):
         result["mode"] = "user"
         result["user_id"] = int(user_match.group(1))
@@ -973,6 +990,7 @@ def parse_purge_command(text: str):
         result["amount"] = int(num_match.group(1))
         return result
 
+    # Nothing matched clearly — don't guess, return None
     return None
 
 
@@ -1318,44 +1336,20 @@ async def _handle_message(message: discord.Message):
 
         target_channel_id, target_user_id, msg_content = announce
         target_channel = bot.get_channel(target_channel_id)
-
         if not target_channel:
-            await message.reply("❌ I couldn't find that channel. Make sure I have access to it.", mention_author=True)
-            return
+            try:
+                target_channel = await bot.fetch_channel(target_channel_id)
+            except Exception:
+                await message.reply("❌ I couldn't find that channel. Make sure I have access to it.", mention_author=True)
+                return
 
-        # Detect if admin wants AI to generate/formulate the announcement
         generate_keywords = [
             "formulate", "generate", "write", "create", "draft", "help me",
             "make", "compose", "craft", "prepare", "put together"
         ]
         should_generate = any(kw in user_text.lower() for kw in generate_keywords)
 
-        async with message.channel.typing():
-            if should_generate:
-                await message.reply("✍️ Generating your announcement...", mention_author=True)
-                try:
-                    ann_data = await generate_announcement(msg_content, target_user_id)
-                    embed, ping_content = build_embed(ann_data)
-                    use_embed = True
-                except Exception as e:
-                    await message.reply(f"⚠️ Couldn't generate the announcement. Error: {e}", mention_author=True)
-                    return
-            else:
-                # Plain send — if content is empty after stripping, ask what to send
-                if not msg_content:
-                    await message.reply(
-                        "❓ What should I send? Please include the message content in your command.",
-                        mention_author=True
-                    )
-                    return
-                plain_text = f"<@{target_user_id}> {msg_content}" if target_user_id else msg_content
-                embed = discord.Embed(description=plain_text, color=EMBED_COLORS["announcement"])
-                embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
-                embed.timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-                ping_content = None
-                use_embed = True
-
-        # Collect attached files grouped by type
+        # Collect attached files
         import io
         image_files = []
         other_files = []
@@ -1368,46 +1362,119 @@ async def _handle_message(message: discord.Message):
                 else:
                     other_files.append((attachment.filename, file_bytes))
 
-        # ── Multi-part layout detection ──────────────────────────────────────
-        # If admin describes an order like "image then text then image" we send
-        # multiple messages to the target channel to achieve the layout
         layout_keywords = ["above", "below", "middle", "between", "then", "followed by",
                            "first image", "second image", "image then text", "text then image",
                            "top", "bottom", "after the text", "before the text"]
         is_multi_layout = len(image_files) > 1 or any(kw in user_text.lower() for kw in layout_keywords)
 
-        async with message.channel.typing():
-            if should_generate:
-                await message.reply("✍️ Generating your announcement...", mention_author=True)
-                try:
-                    ann_data = await generate_announcement(msg_content, target_user_id)
-                    embed, ping_content = build_embed(ann_data)
-                except Exception as e:
-                    await message.reply(f"⚠️ Couldn't generate the announcement. Error: {e}", mention_author=True)
-                    return
-            else:
-                if not msg_content and not image_files:
-                    await message.reply(
-                        "❓ What should I send? Please include the message content in your command.",
-                        mention_author=True
-                    )
-                    return
-                plain_text = f"<@{target_user_id}> {msg_content}" if target_user_id else msg_content
-                embed = discord.Embed(description=plain_text, color=EMBED_COLORS["announcement"])
-                embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
-                embed.timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-                ping_content = None
+        # ── Generate the announcement ────────────────────────────────────────
+        current_hints = msg_content  # kept for re-generation on feedback
 
+        async def generate_embed_and_content(hints, uid):
+            if should_generate or hints:
+                try:
+                    ann_data = await generate_announcement(hints, uid)
+                    emb, ping = build_embed(ann_data)
+                    return emb, ping
+                except Exception as e:
+                    return None, None
+            else:
+                plain = f"<@{uid}> {hints}" if uid else hints
+                emb = discord.Embed(description=plain, color=EMBED_COLORS["announcement"])
+                emb.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+                emb.timestamp = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                return emb, None
+
+        async with message.channel.typing():
+            embed, ping_content = await generate_embed_and_content(current_hints, target_user_id)
+
+        if embed is None:
+            await message.reply("⚠️ Couldn't generate the announcement. Please try again.", mention_author=True)
+            return
+
+        # ── PREVIEW LOOP — show preview, wait for approval ───────────────────
+        max_attempts = 5
+        attempt = 0
+
+        while attempt < max_attempts:
+            attempt += 1
+
+            # Build preview embed with header
+            preview_embed = discord.Embed(
+                title=embed.title,
+                description=embed.description,
+                color=embed.color
+            )
+            preview_embed.set_footer(text=f"📋 PREVIEW — will be sent to #{target_channel.name}  •  africanfreefirecommunity.com")
+            if embed.timestamp:
+                preview_embed.timestamp = embed.timestamp
+
+            # Show preview with images if any
+            preview_files = []
+            if image_files:
+                preview_files = [discord.File(fp=io.BytesIO(fb), filename=fn) for fn, fb in image_files[:1]]
+
+            await message.channel.send(
+                content=f"{message.author.mention} **Preview** → will send to <#{target_channel_id}>",
+                embed=preview_embed,
+                files=preview_files if preview_files else discord.utils.MISSING
+            )
+
+            # Show approval prompt
+            approval_msg = await message.channel.send(
+                "✅ Type `send` to send  |  ✏️ Type your correction to fix it  |  ❌ Type `cancel` to cancel"
+            )
+
+            def approval_check(m):
+                return (
+                    m.author.id == message.author.id
+                    and m.channel.id == message.channel.id
+                )
+
+            try:
+                response = await bot.wait_for("message", check=approval_check, timeout=120.0)
+                resp_text = response.content.strip().lower()
+
+                # Clean up the approval prompt and response after reading
+                try:
+                    await approval_msg.delete()
+                    await response.delete()
+                except Exception:
+                    pass
+
+                if resp_text == "cancel":
+                    await message.channel.send("❌ Announcement cancelled.", delete_after=5)
+                    return
+
+                elif resp_text == "send":
+                    # ── Send to target channel ───────────────────────────────
+                    break  # exit loop and send below
+
+                else:
+                    # User gave feedback — regenerate with correction
+                    async with message.channel.typing():
+                        # Combine original hints with the correction
+                        new_hints = f"{current_hints}\n\nCorrection: {response.content.strip()}"
+                        embed, ping_content = await generate_embed_and_content(new_hints, target_user_id)
+                    if embed is None:
+                        await message.channel.send("⚠️ Couldn't regenerate. Try again.", delete_after=5)
+                        return
+                    continue  # show updated preview
+
+            except asyncio.TimeoutError:
+                await message.channel.send(
+                    "⏱️ No response for 2 minutes. Announcement cancelled.",
+                    delete_after=10
+                )
+                return
+
+        # ── Actually send to target channel ──────────────────────────────────
         try:
             allowed = discord.AllowedMentions(everyone=True, roles=True, users=True)
             sent = None
 
             if is_multi_layout and image_files:
-                # Detect layout order from user instruction
-                # Default: all images first, then embed text
                 text_lower = user_text.lower()
-
-                # Parse position of text relative to images
                 if re.search(r"\bimage\s+(above|first|on\s+top|before\s+text)\b"
                              r"|\babove\s+the\s+text\b|\bimage\s+then\s+text\b"
                              r"|\btop\b.*\bimage\b", text_lower):
@@ -1417,32 +1484,23 @@ async def _handle_message(message: discord.Message):
                                r"|\bbottom\b.*\bimage\b", text_lower):
                     order = "text_first"
                 elif re.search(r"\bmiddle\b|\bbetween\b|\bsandwich\b", text_lower):
-                    order = "sandwich"  # image, text, image
+                    order = "sandwich"
                 else:
-                    order = "images_first"  # default
+                    order = "images_first"
 
                 if order == "images_first":
-                    # Send all images first, then the embed
                     for fname, fbytes in image_files:
                         await target_channel.send(
                             file=discord.File(fp=io.BytesIO(fbytes), filename=fname),
                             allowed_mentions=allowed
                         )
                         await asyncio.sleep(0.5)
-                    sent = await target_channel.send(
-                        content=ping_content, embed=embed, allowed_mentions=allowed
-                    )
-                    # Send any remaining non-image files
+                    sent = await target_channel.send(content=ping_content, embed=embed, allowed_mentions=allowed)
                     for fname, fbytes in other_files:
-                        await target_channel.send(
-                            file=discord.File(fp=io.BytesIO(fbytes), filename=fname)
-                        )
+                        await target_channel.send(file=discord.File(fp=io.BytesIO(fbytes), filename=fname))
 
                 elif order == "text_first":
-                    # Send embed first, then all images
-                    sent = await target_channel.send(
-                        content=ping_content, embed=embed, allowed_mentions=allowed
-                    )
+                    sent = await target_channel.send(content=ping_content, embed=embed, allowed_mentions=allowed)
                     for fname, fbytes in image_files:
                         await target_channel.send(
                             file=discord.File(fp=io.BytesIO(fbytes), filename=fname),
@@ -1451,16 +1509,13 @@ async def _handle_message(message: discord.Message):
                         await asyncio.sleep(0.5)
 
                 elif order == "sandwich":
-                    # First image, then embed, then remaining images
                     first_fname, first_fbytes = image_files[0]
                     await target_channel.send(
                         file=discord.File(fp=io.BytesIO(first_fbytes), filename=first_fname),
                         allowed_mentions=allowed
                     )
                     await asyncio.sleep(0.5)
-                    sent = await target_channel.send(
-                        content=ping_content, embed=embed, allowed_mentions=allowed
-                    )
+                    sent = await target_channel.send(content=ping_content, embed=embed, allowed_mentions=allowed)
                     for fname, fbytes in image_files[1:]:
                         await asyncio.sleep(0.5)
                         await target_channel.send(
@@ -1468,12 +1523,8 @@ async def _handle_message(message: discord.Message):
                             allowed_mentions=allowed
                         )
 
-            elif image_files and not is_multi_layout:
-                # Single image — attach to the embed message
-                first_fname, first_fbytes = image_files[0]
-                files_to_send = [discord.File(fp=io.BytesIO(first_fbytes), filename=first_fname)]
-                for fname, fbytes in image_files[1:]:
-                    files_to_send.append(discord.File(fp=io.BytesIO(fbytes), filename=fname))
+            elif image_files:
+                files_to_send = [discord.File(fp=io.BytesIO(fb), filename=fn) for fn, fb in image_files]
                 for fname, fbytes in other_files:
                     files_to_send.append(discord.File(fp=io.BytesIO(fbytes), filename=fname))
                 sent = await target_channel.send(
@@ -1481,30 +1532,24 @@ async def _handle_message(message: discord.Message):
                     files=files_to_send, allowed_mentions=allowed
                 )
             else:
-                # No attachments — just send the embed
                 other_fs = [discord.File(fp=io.BytesIO(fb), filename=fn) for fn, fb in other_files]
-                if other_fs:
-                    sent = await target_channel.send(
-                        content=ping_content, embed=embed,
-                        files=other_fs, allowed_mentions=allowed
-                    )
-                else:
-                    sent = await target_channel.send(
-                        content=ping_content, embed=embed, allowed_mentions=allowed
-                    )
+                sent = await target_channel.send(
+                    content=ping_content, embed=embed,
+                    files=other_fs if other_fs else discord.utils.MISSING,
+                    allowed_mentions=allowed
+                )
 
             if sent:
                 last_bot_announcements[target_channel.id] = sent.id
 
-            layout_note = f" (multi-part layout)" if is_multi_layout and image_files else ""
-            await message.reply(
-                f"✅ Announcement sent to <#{target_channel_id}>{layout_note}.",
-                mention_author=True
+            await message.channel.send(
+                f"✅ Announcement sent to <#{target_channel_id}>!",
+                delete_after=10
             )
+
         except discord.Forbidden:
             await message.reply(
-                f"❌ I don't have permission to send messages in <#{target_channel_id}>. "
-                "Make sure I have the Administrator role.",
+                f"❌ I don't have permission to send messages in <#{target_channel_id}>.",
                 mention_author=True
             )
         return
