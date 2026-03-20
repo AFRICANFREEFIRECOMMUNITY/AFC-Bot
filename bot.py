@@ -33,6 +33,14 @@ ALLOWED_CHANNELS = [
     955773076786798643,
 ]
 
+# Channels where the bot auto-replies to ALL messages (not just @mentions)
+# Add the channel IDs where users ask questions (e.g. support, general, help)
+AUTO_REPLY_CHANNELS = [
+    1026913984923840542,  # support channel
+    920726991089598476,   # general/main
+    953326236950757446,   # add more as needed
+]
+
 # Roles allowed to use the announcement command
 ANNOUNCE_ROLES = [
     920732760094703746,
@@ -229,68 +237,51 @@ def load_knowledge() -> str:
 
 def build_system_prompt() -> str:
     knowledge = load_knowledge()
+    support_role_tags = " ".join([f"<@&{rid}>" for rid in SUPPORT_ROLES])
     return f"""You are AFC BOT — the official AI assistant for the African Freefire Community (AFC).
-You are knowledgeable, friendly, and community-focused. Your job is to help players, teams, and community members with anything related to AFC.
+You are the first point of contact for every player, team member, and community member on the AFC Discord server.
 
-=== YOUR PERSONALITY ===
-- Warm, hype, and encouraging — you love Free Fire and the AFC community.
-- You understand and can reply in Nigerian Pidgin English naturally when a user speaks to you in Pidgin.
-- If someone talks Pidgin, match their energy — reply in Pidgin too. E.g., "No wahala!", "You don do am!", "E easy na!"
-- Keep replies concise and punchy for Discord — no walls of text unless detail is truly needed.
-- Use emojis occasionally to keep things lively 🔥🎮🏆
+=== YOUR CORE MISSION ===
+Help every user feel heard, get clear answers fast, and never leave them stuck.
+You are smart, warm, and professional — like a knowledgeable friend who genuinely cares.
 
-=== KNOWLEDGE BASE PRIORITY — READ THIS FIRST ===
-Your knowledge base is at the bottom of this prompt. ALWAYS check it before answering.
-If the answer is in the knowledge base, use it — do not say you don't know.
-If a user asks about a tournament, team, rule, or event — search the knowledge base carefully before responding.
-Never tell a user to "check the website" if the answer is already in your knowledge base.
+=== PERSONALITY ===
+- Friendly and approachable — never robotic or cold
+- Professional but not stiff — match the user's energy
+- If someone writes in Pidgin, reply in Pidgin naturally: "No wahala!", "You don do am!", "E easy"
+- Keep replies concise — no walls of text. Get to the point.
+- Use **bold** for key info, links, and steps so they're easy to scan
+- 1-2 emojis max — only where they genuinely add warmth or energy 🔥🎮
 
-=== WHAT YOU CAN HELP WITH ===
-- How to join AFC and create an account
-- Tournament info, registration, rules, and prizes
-- Team registration, roster management, transfers
-- Ranking and tiering system explanations
-- Code of conduct and fair play rules
-- Terms of Service and policies
-- Contact info and social media links
-- General Free Fire gameplay tips and advice
-- Analyzing images sent by users (screenshots, team logos, etc.)
-- Transcribed audio messages — reply based on what was said
+=== HOW TO ANSWER QUESTIONS ===
+1. ALWAYS check the knowledge base below FIRST before saying you don't know
+2. If the answer is there — give it clearly, directly, with the relevant link
+3. If the user seems confused or frustrated — acknowledge that first before answering
+4. For step-by-step questions — use numbered steps, keep each step short
+5. Always include the most relevant link at the end of your answer
+6. If someone asks about something that "coming soon" or in development — say so honestly
 
-=== YOU CANNOT DO THESE THINGS — DO NOT CLAIM OTHERWISE ===
-- You CANNOT kick, ban, or mute users directly
-- You CANNOT edit other people's messages
-- For anything outside your capabilities, suggest they ask a moderator
-
-=== PURGE / DELETE MESSAGES ===
-You CAN delete messages in any channel when asked by an admin — including from a different channel.
-If a regular user asks you to delete messages, let them know only moderators/admins can use that command.
-Admins can specify a channel like: "purge last 10 in <#channel>" or "clear all messages in <#channel>"
-
-=== EDITING MESSAGES ===
-You CAN edit your own messages in any channel, even from a different channel.
-Admins can say things like: "edit last announcement in <#channel>, make it shorter"
-or "fix message 123456789 in <#channel>, less emojis"
-
-=== ROLE MANAGEMENT ===
-You CAN create, delete, rename, recolor, and edit role properties.
-Examples: "create role Veteran", "delete role @OldRole", "rename @Role to Senior Staff",
-"change @Role color to gold", "make @Role mentionable"
-
-=== WHEN TO REDIRECT TO SUPPORT ===
-ONLY add ---SUPPORT_REDIRECT--- at the end of your reply when the issue GENUINELY needs a human — such as:
-- Account banned, locked, or can't log in
+=== WHEN TO ESCALATE TO SUPPORT ===
+ONLY escalate (add ---SUPPORT_REDIRECT--- at the end) for genuine issues needing a human:
+- Account banned, suspended, or locked
+- Wrong Free Fire UID submitted — needs admin correction
+- Discord role not assigned after linking/registering
 - Payment or prize dispute
 - Cheating report or ban appeal
-- Technical bug on the website
+- Match results missing or wrong after 24 hours
+- Private event invite needed from an organiser
+- Anything that requires an admin to take direct action on the platform
 
-Do NOT redirect just because you lack details. If you don't know something, simply say so and direct them to info@africanfreefirecommunity.com.
-Do NOT redirect for general questions, tournament info, or anything you can answer from the knowledge base.
+DO NOT escalate for general questions you can answer from the knowledge base.
+DO NOT escalate for "I don't know" situations — just say you don't have that info and direct them to Discord support.
 
 === IMPORTANT RULES ===
-- Never make up tournament dates, prize amounts, or rules not in your knowledge base.
-- Always be respectful and never take sides in player disputes.
-- If someone is clearly angry or frustrated, acknowledge their feelings before answering.
+- Never make up tournament dates, prizes, or rules not in your knowledge base
+- Never take sides in disputes between players or teams
+- If someone is angry — calm, acknowledge, then help
+- The Transfer Window is currently OPEN (March 2026)
+- Current active events: Dynasty Cup series launching April 1, 2026 across 10 African countries
+- Platform stats: 4,081+ users, 323 teams, 11 tournaments, $5,750 total prize pool
 
 === AFC KNOWLEDGE BASE ===
 {knowledge}
@@ -635,13 +626,22 @@ async def ask_openai_with_image(channel_id: int, user_text: str, username: str, 
 
 
 async def send_support_redirect(message: discord.Message):
-    """Send a support channel redirect message tagging the support roles."""
+    """Send a smart support redirect that tags roles and points to the support channel."""
     role_tags = " ".join([f"<@&{rid}>" for rid in SUPPORT_ROLES])
-    await message.channel.send(
-        f"🎫 Hey {message.author.mention}, it looks like this needs the attention of our support team!\n"
-        f"Please head over to <#{SUPPORT_CHANNEL_ID}> and create a ticket — our staff will assist you there.\n"
-        f"{role_tags}"
+    embed = discord.Embed(
+        description=(
+            f"Hey {message.author.mention}, this one needs a human to sort out properly. 🙏\n\n"
+            f"**Here's what you can do:**\n"
+            f"1. Head over to <#{SUPPORT_CHANNEL_ID}> and create a support ticket\n"
+            f"2. Or reach out directly via email: **info@africanfreefirecommunity.com**\n"
+            f"3. Or join the AFC Discord: **discord.gg/afc**\n\n"
+            f"Our support team has been notified 👇"
+        ),
+        color=0x00A550
     )
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    await message.channel.send(embed=embed)
+    await message.channel.send(f"🔔 {role_tags} — support needed here.")
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
@@ -1221,6 +1221,46 @@ async def on_message(message: discord.Message):
         print(f"⚠️  Unhandled error in on_message: {e}")
 
 
+async def should_bot_respond(message_text: str) -> bool:
+    """
+    Use GPT to quickly decide if a message is worth the bot responding to.
+    Returns True only if the message is a question or problem the bot can help with.
+    Fast, cheap call — uses minimal tokens.
+    """
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a classifier for a Discord bot for an African Free Fire gaming platform called AFC. "
+                        "Decide if the bot should respond to a message.\n\n"
+                        "Reply YES if the message is:\n"
+                        "- A question about AFC, Free Fire, tournaments, teams, accounts, registration, rules, etc.\n"
+                        "- A problem or complaint that needs help\n"
+                        "- Asking how to do something on the platform\n"
+                        "- Requesting information about events, prizes, rankings, or the shop\n\n"
+                        "Reply NO if the message is:\n"
+                        "- Casual chat, greetings, reactions (e.g. 'lol', 'nice', 'gg', 'hello guys')\n"
+                        "- Hype or excitement messages ('let's go!', 'we won!', 'fire bro')\n"
+                        "- Banter between players\n"
+                        "- Off-topic conversations unrelated to AFC or Free Fire\n"
+                        "- Statements with no question or request\n\n"
+                        "Reply with only YES or NO."
+                    )
+                },
+                {"role": "user", "content": message_text}
+            ],
+            max_tokens=5,
+            temperature=0,
+        )
+        answer = response.choices[0].message.content.strip().upper()
+        return answer.startswith("YES")
+    except Exception:
+        return False  # on error, don't respond
+
+
 async def _handle_message(message: discord.Message):
     # Ignore self
     if message.author == bot.user:
@@ -1230,9 +1270,27 @@ async def _handle_message(message: discord.Message):
     if not is_allowed_channel(message.channel.id):
         return
 
-    # Only respond when @mentioned
-    if bot.user not in message.mentions:
+    is_mentioned = bot.user in message.mentions
+    is_auto_reply_channel = message.channel.id in AUTO_REPLY_CHANNELS
+
+    # Respond if: @mentioned anywhere in allowed channels, OR in auto-reply channels
+    if not is_mentioned and not is_auto_reply_channel:
         return
+
+    # In auto-reply channels (no @mention), use AI to decide if this needs a response
+    if is_auto_reply_channel and not is_mentioned:
+        content = message.content.strip()
+
+        # Quick filter — skip very short messages and pure emoji reactions
+        if len(content) < 8:
+            return
+        if re.match(r'^[\U00010000-\U0010ffff\U00002000-\U00002BFF\s]+$', content):
+            return
+
+        # Ask GPT if this message is worth responding to
+        should_respond = await should_bot_respond(content)
+        if not should_respond:
+            return
 
     # Strip the @mention
     user_text = message.content.replace(f"<@{bot.user.id}>", "").strip()
