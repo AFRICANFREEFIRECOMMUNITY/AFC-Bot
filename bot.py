@@ -1224,8 +1224,7 @@ async def on_message(message: discord.Message):
 async def should_bot_respond(message_text: str) -> bool:
     """
     Use GPT to quickly decide if a message is worth the bot responding to.
-    Returns True only if the message is a question or problem the bot can help with.
-    Fast, cheap call — uses minimal tokens.
+    Defaults to True on any error so the bot never silently ignores questions.
     """
     try:
         response = client_ai.chat.completions.create(
@@ -1234,19 +1233,20 @@ async def should_bot_respond(message_text: str) -> bool:
                 {
                     "role": "system",
                     "content": (
-                        "You are a classifier for a Discord bot for an African Free Fire gaming platform called AFC. "
-                        "Decide if the bot should respond to a message.\n\n"
-                        "Reply YES if the message is:\n"
-                        "- A question about AFC, Free Fire, tournaments, teams, accounts, registration, rules, etc.\n"
-                        "- A problem or complaint that needs help\n"
-                        "- Asking how to do something on the platform\n"
-                        "- Requesting information about events, prizes, rankings, or the shop\n\n"
-                        "Reply NO if the message is:\n"
-                        "- Casual chat, greetings, reactions (e.g. 'lol', 'nice', 'gg', 'hello guys')\n"
-                        "- Hype or excitement messages ('let's go!', 'we won!', 'fire bro')\n"
-                        "- Banter between players\n"
-                        "- Off-topic conversations unrelated to AFC or Free Fire\n"
-                        "- Statements with no question or request\n\n"
+                        "You are a classifier for a Discord bot for an African Free Fire gaming platform called AFC.\n"
+                        "Decide if a support bot should respond to this message.\n\n"
+                        "Reply YES if the message:\n"
+                        "- Is a question (any question at all)\n"
+                        "- Describes a problem or issue\n"
+                        "- Asks how to do something\n"
+                        "- Requests information about anything\n"
+                        "- Seems like the person needs help\n"
+                        "- Is unclear but could be a question\n\n"
+                        "Reply NO only if the message is CLEARLY:\n"
+                        "- Pure casual chat with no question (e.g. 'lol', 'gg', 'nice', 'let's go', 'we won')\n"
+                        "- A greeting with no question (e.g. 'hey guys', 'good morning')\n"
+                        "- Pure hype or reaction (e.g. 'fire bro', 'that's crazy')\n\n"
+                        "When in doubt, reply YES.\n"
                         "Reply with only YES or NO."
                     )
                 },
@@ -1256,9 +1256,10 @@ async def should_bot_respond(message_text: str) -> bool:
             temperature=0,
         )
         answer = response.choices[0].message.content.strip().upper()
-        return answer.startswith("YES")
-    except Exception:
-        return False  # on error, don't respond
+        return not answer.startswith("NO")  # default to YES unless clearly NO
+    except Exception as e:
+        print(f"⚠️  should_bot_respond error: {e} — defaulting to respond")
+        return True  # always respond if classifier fails
 
 
 async def _handle_message(message: discord.Message):
