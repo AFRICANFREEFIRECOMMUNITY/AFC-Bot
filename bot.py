@@ -89,17 +89,17 @@ UNBAN_ANNOUNCEMENT_CHANNEL_ID = 1353759565543637062
 # AFC backend API base
 AFC_API_BASE = "https://api.africanfreefirecommunity.com"
 
-# Files to persist poll state across restarts
-SEEN_NEWS_FILE          = os.path.join(BASE_DIR, "seen_news.json")
-SEEN_EVENTS_FILE        = os.path.join(BASE_DIR, "seen_events.json")
-SEEN_BAN_ACTIVITIES_FILE = os.path.join(BASE_DIR, "seen_ban_activities.json")
-
 # Always use the folder where bot.py lives — avoids permission errors on Windows
 BASE_DIR              = os.path.dirname(os.path.abspath(__file__))
 KNOWLEDGE_DIR         = os.path.join(BASE_DIR, "knowledge")
 STAFF_KNOWLEDGE_DIR   = os.path.join(BASE_DIR, "knowledge_staff")
 HISTORY_FILE          = os.path.join(BASE_DIR, "conversation_history.json")
 BASE_KNOWLEDGE        = os.path.join(BASE_DIR, "knowledge_base.txt")
+
+# Files to persist poll state across restarts
+SEEN_NEWS_FILE          = os.path.join(BASE_DIR, "seen_news.json")
+SEEN_EVENTS_FILE        = os.path.join(BASE_DIR, "seen_events.json")
+SEEN_BAN_ACTIVITIES_FILE = os.path.join(BASE_DIR, "seen_ban_activities.json")
 
 MAX_HISTORY      = 30
 HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
