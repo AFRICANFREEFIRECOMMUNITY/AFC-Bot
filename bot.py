@@ -2540,6 +2540,109 @@ async def _handle_message(message: discord.Message):
                     await message.reply(f"⚠️ Couldn't join: {e}", mention_author=True)
                 return
 
+    # ── Help command ─────────────────────────────────────────────────────────
+    if re.search(r"^\s*(help|commands?|what\s+can\s+you\s+do|list\s+commands?|show\s+commands?)\s*$", user_text, re.IGNORECASE):
+        is_admin = has_admin_role(message.author)
+        is_trans = has_transcription_role(message.author)
+
+        # ── Page 1: General / Q&A ─────────────────────────────────────────
+        general = discord.Embed(
+            title="🤖 AFC Bot — What I Can Do",
+            description=(
+                "I'm the official AFC assistant. Here's everything I can help with.\n"
+                "All commands are natural language — just @mention me and describe what you need."
+            ),
+            color=EMBED_COLORS["general"],
+        )
+        general.add_field(
+            name="💬 Questions & Support",
+            value=(
+                "Ask me anything about the AFC platform — tournaments, teams, registration, rules, rankings, and more.\n"
+                "I understand Nigerian Pidgin too. Just ask naturally.\n"
+                "*(Works in support & general channels without @mention)*"
+            ),
+            inline=False,
+        )
+        general.add_field(
+            name="📎 Files & Media",
+            value=(
+                "Send me an **image** — I'll describe or analyse it.\n"
+                "Send an **audio/video file** — I'll transcribe it.\n"
+                "Send a **PDF, Word, or Excel** file — I'll read and summarise it."
+            ),
+            inline=False,
+        )
+        general.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+        general.timestamp = datetime.now(timezone.utc)
+
+        await message.reply(embed=general, mention_author=False)
+
+        # ── Page 2: Staff commands ────────────────────────────────────────
+        if is_admin or is_trans:
+            staff = discord.Embed(
+                title="🛠️ Staff Commands",
+                description="These commands are available to mods, admins, and support roles.",
+                color=EMBED_COLORS["announcement"],
+            )
+            staff.add_field(
+                name="📢 Announcements",
+                value=(
+                    "`@bot send [message] to #channel` — post an AI-formatted announcement\n"
+                    "`@bot send [message] to @user in #channel` — tag a user in the announcement\n"
+                    "You can also attach an image and it'll be included in the embed."
+                ),
+                inline=False,
+            )
+            staff.add_field(
+                name="✏️ Edit Messages",
+                value=(
+                    "`@bot edit last message — [instruction]` — rewrite your last bot message\n"
+                    "`@bot edit last announcement in #channel — [instruction]`\n"
+                    "`@bot edit message [ID] — [instruction]`\n"
+                    "Or just give feedback naturally: *\"too many emojis\"*, *\"make it shorter\"*"
+                ),
+                inline=False,
+            )
+            staff.add_field(
+                name="🗑️ Purge Messages",
+                value=(
+                    "`@bot delete last [N] messages in #channel`\n"
+                    "`@bot purge messages from @user in #channel`\n"
+                    "`@bot delete messages from @user1 and @user2 in #channel`\n"
+                    "`@bot delete messages from users with @role in #channel`\n"
+                    "`@bot purge messages containing \"word\" in #channel`\n"
+                    "`@bot purge all messages in #channel`"
+                ),
+                inline=False,
+            )
+            if is_trans:
+                staff.add_field(
+                    name="🎙️ Voice Transcription",
+                    value=(
+                        "`@bot transcribe #voice-channel` — join and start recording\n"
+                        "`@bot transcribe` — join the voice channel you're in\n"
+                        "`@bot stop transcribing` — stop and generate the transcript\n"
+                        "When a stage is created, I'll ask in the mods channel if I should transcribe."
+                    ),
+                    inline=False,
+                )
+            if is_admin:
+                staff.add_field(
+                    name="⚙️ Server Management",
+                    value=(
+                        "**Channels:** `create channel/voice/category [name]` · `delete #channel` · `lock/unlock #channel` · `hide/show #channel`\n"
+                        "**Roles (single user):** `give @role to @user` · `remove @role from @user`\n"
+                        "**Roles (mass):** `give @role to everyone` · `remove @role from everyone with @otherrole`\n"
+                        "**Role management:** `create role [name]` · `delete role @role` · `rename @role to [name]` · `recolor @role to #hex`"
+                    ),
+                    inline=False,
+                )
+            staff.set_footer(text="African Freefire Community  •  Staff commands")
+            staff.timestamp = datetime.now(timezone.utc)
+            await message.channel.send(embed=staff)
+
+        return
+
     # ── Server management commands (admin only) ──────────────────────────────
     if has_admin_role(message.author):
 
