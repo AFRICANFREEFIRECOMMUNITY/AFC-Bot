@@ -33,6 +33,9 @@ ALLOWED_CHANNELS = [
     955773076786798643,
 ]
 
+# Category ID — bot listens and replies in ALL channels under this category
+ALLOWED_CATEGORIES = {1074466672909496420}
+
 # Channels where the bot auto-replies to ALL messages (not just @mentions)
 # Add the channel IDs where users ask questions (e.g. support, general, help)
 AUTO_REPLY_CHANNELS = [
@@ -66,7 +69,7 @@ STAFF_KNOWLEDGE_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES + [SCRIMS_MASTER_ROLE
 MODERATION_SUPPORT_CHANNEL_ID = 1026913984923840542
 
 # Channel where auto-generated news announcements are posted
-NEWS_ANNOUNCEMENT_CHANNEL_ID = 955773076786798643
+NEWS_ANNOUNCEMENT_CHANNEL_ID = 1306247327840731157
 
 # How often to auto-refresh the knowledge base (hours)
 SCRAPE_INTERVAL_HOURS = 6
@@ -77,7 +80,7 @@ EVENT_POLL_INTERVAL_SECS   = 120
 BAN_POLL_INTERVAL_SECS     = 60    # every 1 minute
 
 # Channel for tournament announcements
-TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID = 920795335272579102
+TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID = 955773076786798643
 # Channel for scrim announcements + role to ping
 SCRIM_ANNOUNCEMENT_CHANNEL_ID      = 1487971199454679050
 SCRIMS_PING_ROLE_ID                = 1395722795878584391
@@ -380,7 +383,7 @@ async def news_poll_loop():
                 for article in reversed(new_articles):
                     try:
                         embed = await generate_news_embed(article)
-                        await news_channel.send(embed=embed)
+                        await news_channel.send(content="@everyone", embed=embed)
                         seen.add(str(article["news_id"]))
                         print(f"📰  Announced news: {article.get('news_title', article['news_id'])}")
                         await asyncio.sleep(2)   # small gap between multiple posts
@@ -488,7 +491,10 @@ async def event_poll_loop():
                     ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
 
                     channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
-                    await channel.send(content=ping, embed=embed)
+                    # For scrims, ping is the scrims role; for tournaments, tag @everyone
+                    everyone_ping = "@everyone" if not is_scrim else ""
+                    content = " ".join(filter(None, [everyone_ping, ping]))
+                    await channel.send(content=content, embed=embed)
                     seen.add(str(event["event_id"]))
                     print(f"🎮  Announced event: {event.get('event_name')}")
                     await asyncio.sleep(2)
@@ -873,8 +879,12 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-def is_allowed_channel(channel_id: int) -> bool:
-    return channel_id in ALLOWED_CHANNELS
+def is_allowed_channel(channel_id: int, channel: discord.TextChannel = None) -> bool:
+    if channel_id in ALLOWED_CHANNELS:
+        return True
+    if channel and getattr(channel, "category_id", None) in ALLOWED_CATEGORIES:
+        return True
+    return False
 
 
 def has_announce_role(member: discord.Member) -> bool:
@@ -1813,7 +1823,7 @@ async def on_ready():
     bot.loop.create_task(event_poll_loop())
     bot.loop.create_task(ban_poll_loop())
     print(f"✅  AFC Bot is online as {bot.user} (id: {bot.user.id})")
-    print(f"📌  Listening in {len(ALLOWED_CHANNELS)} channels")
+    print(f"📌  Listening in {len(ALLOWED_CHANNELS)} explicit channels + all channels in {len(ALLOWED_CATEGORIES)} category(ies)")
     print(f"📚  Knowledge base loaded: {len(load_knowledge())} characters")
     print(f"🕒  Conversation history: saved to disk, auto-clears after 24 hours")
     print(f"🔄  Auto-scrape: every {SCRAPE_INTERVAL_HOURS}h (first run in {SCRAPE_INTERVAL_HOURS}h)")
@@ -1880,7 +1890,7 @@ async def _handle_message(message: discord.Message):
         return
 
     # Only allowed channels
-    if not is_allowed_channel(message.channel.id):
+    if not is_allowed_channel(message.channel.id, message.channel):
         return
 
     is_mentioned = bot.user in message.mentions
