@@ -1263,6 +1263,11 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
 # Tracks pending delete confirmations: {original_message_id: channel_to_delete_id}
 pending_deletions: dict[int, int] = {}
 
+# Channels currently waiting for a confirmation reply (purge, mass-role, etc.)
+# While a channel is in this set, _handle_message ignores all messages in it
+# so the AI never responds to "yes" / "no" confirmation replies.
+_awaiting_confirmation: set[int] = set()
+
 def has_admin_role(member: discord.Member) -> bool:
     """Check if member has one of the announcement/admin roles."""
     return any(role.id in ANNOUNCE_ROLES for role in member.roles)
@@ -1894,6 +1899,11 @@ async def _handle_message(message: discord.Message):
     if not is_allowed_channel(message.channel.id, message.channel):
         return
 
+    # If this channel is waiting for a confirmation reply (yes/no), ignore all
+    # messages so the AI never responds to confirmation inputs.
+    if message.channel.id in _awaiting_confirmation:
+        return
+
     is_mentioned = bot.user in message.mentions
     is_auto_reply_channel = message.channel.id in AUTO_REPLY_CHANNELS
 
@@ -2115,6 +2125,7 @@ async def _handle_message(message: discord.Message):
                 )
 
             try:
+                _awaiting_confirmation.add(message.channel.id)
                 response = await bot.wait_for("message", check=approval_check, timeout=120.0)
                 resp_text = response.content.strip().lower()
 
@@ -2150,6 +2161,8 @@ async def _handle_message(message: discord.Message):
                     delete_after=10
                 )
                 return
+            finally:
+                _awaiting_confirmation.discard(message.channel.id)
 
         # ── Actually send to target channel ──────────────────────────────────
         try:
@@ -2366,6 +2379,7 @@ async def _handle_message(message: discord.Message):
                 )
 
             try:
+                _awaiting_confirmation.add(message.channel.id)
                 confirm = await bot.wait_for("message", check=mass_check, timeout=30.0)
                 if confirm.content.lower().strip() not in ("yes", "y"):
                     await message.channel.send("❌ Mass role action cancelled.")
@@ -2373,6 +2387,8 @@ async def _handle_message(message: discord.Message):
             except asyncio.TimeoutError:
                 await message.channel.send("⏱️ Confirmation timed out. Action cancelled.")
                 return
+            finally:
+                _awaiting_confirmation.discard(message.channel.id)
 
             # Execute — fetch all members and apply
             await message.channel.send(f"⚙️ Working on it... this may take a moment for large servers.")
@@ -2712,13 +2728,13 @@ async def _handle_message(message: discord.Message):
                 )
 
             try:
+                _awaiting_confirmation.add(message.channel.id)
                 confirm = await bot.wait_for("message", check=purge_check, timeout=30.0)
                 cleanup_ids.add(confirm.id)  # admin's yes/no reply
 
                 if confirm.content.lower().strip() not in ("yes", "y"):
                     cancelled_msg = await message.channel.send("❌ Purge cancelled.")
                     cleanup_ids.add(cancelled_msg.id)
-                    # Clean up all confirmation messages
                     await asyncio.sleep(2)
                     for mid in cleanup_ids:
                         try:
@@ -2738,6 +2754,8 @@ async def _handle_message(message: discord.Message):
                     except Exception:
                         pass
                 return
+            finally:
+                _awaiting_confirmation.discard(message.channel.id)
 
             # Execute the purge in a background task so the bot stays responsive
             async def do_purge():
