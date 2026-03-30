@@ -631,7 +631,8 @@ async def build_ban_embed(parsed: dict) -> discord.Embed:
     embed.add_field(name=label,        value=parsed["name"],   inline=True)
     if is_ban and parsed.get("duration"):
         embed.add_field(name="Duration",   value=parsed["duration"], inline=True)
-    embed.add_field(name="Reason",     value=parsed["reason"], inline=False)
+    if is_ban:
+        embed.add_field(name="Reason",     value=parsed["reason"], inline=False)
 
     # For team bans/unbans — fetch logo and member list
     if entity_type == "team" and parsed["name"] != "Unknown":
@@ -928,7 +929,10 @@ def parse_announce_command(text: str):
     if re.search(
         r"\bdelete\s+messages\b|\bpurge\b|\bclear\s+messages\b"
         r"|\bremove\s+messages\b|\bwipe\s+messages\b"
-        r"|\bdelete\s+all\s+messages\b|\bdelete\s+messages\s+from\b",
+        r"|\bdelete\s+all\s+messages\b|\bdelete\s+messages\s+from\b"
+        r"|\bdelete\s+(the\s+)?(last\s+)?\d+"
+        r"|\bclear\s+(the\s+)?(last\s+)?\d+"
+        r"|\bremove\s+(the\s+)?(last\s+)?\d+",
         text, re.IGNORECASE
     ):
         return None
@@ -1493,23 +1497,27 @@ def parse_delete_command(text: str):
 def parse_purge_command(text: str):
     """
     Detect message purge/clear commands.
-    Returns dict with keys: mode, channel_id, amount, keyword, user_id
+    Returns dict with keys: mode, channel_id, amount, keyword, user_ids, role_id
     or None if not a purge command.
 
     Modes:
       count   — delete X messages
       keyword — delete messages containing a word/phrase
-      user    — delete all messages from a specific user
+      user    — delete all messages from one or more specific users
+      role    — delete all messages from users who have a specific role
       all     — delete ALL messages in the channel
 
     Examples:
       purge 50 messages in <#channel>
       clear 10 in <#channel>
       delete 20 messages in <#channel>
+      delete the last 3 messages in <#channel>
       purge messages containing "spam" in <#channel>
       clear messages from @user in <#channel>
+      delete messages from @user1 and @user2 in <#channel>
+      delete messages from users with @role in <#channel>
+      purge messages from @role members in <#channel>
       purge all messages in <#channel>
-      purge all in <#channel>
     """
     if not re.search(
         r"\bpurge\b|\bclear\b|\bclean\b|\bwipe\b"
@@ -1521,11 +1529,12 @@ def parse_purge_command(text: str):
         return None
 
     result = {
-        "mode": None,
+        "mode":       None,
         "channel_id": None,
-        "amount": None,
-        "keyword": None,
-        "user_id": None,
+        "amount":     None,
+        "keyword":    None,
+        "user_ids":   [],     # list — supports multiple users
+        "role_id":    None,
     }
 
     # Channel (optional — defaults to current channel if not specified)
@@ -1537,20 +1546,32 @@ def parse_purge_command(text: str):
         result["mode"] = "all"
         return result
 
-    # Mode: USER — "@mention" or plain user ID with user/from context
-    user_match = re.search(r"<@!?(\d+)>", text)
+    # Mode: ROLE — "from users with @role" / "from @role members" / "from @role"
+    role_match = re.search(r"<@&(\d+)>", text)
+    if role_match and re.search(
+        r"\bfrom\b|\bby\b|\bwith\b|\bmembers\b|\bwho\s+have\b|\bwho\s+has\b",
+        text, re.IGNORECASE
+    ):
+        result["mode"]    = "role"
+        result["role_id"] = int(role_match.group(1))
+        return result
+
+    # Mode: USER — one or more @mentions or plain user IDs with from/by context
+    # Strip role mentions and channel mentions before collecting user mentions
+    text_no_roles = re.sub(r"<@&\d+>|<#\d+>", "", text)
+    user_ids = [int(uid) for uid in re.findall(r"<@!?(\d+)>", text_no_roles)]
+
     # Also handle plain user IDs like "from user 563399749231706123"
-    if not user_match:
-        plain_id = re.search(
+    if not user_ids:
+        plain_ids = re.findall(
             r"(?:from\s+(?:this\s+)?(?:user\s+)?|by\s+(?:user\s+)?)(\d{15,19})\b",
             text, re.IGNORECASE
         )
-        if plain_id:
-            user_match = plain_id
+        user_ids = [int(i) for i in plain_ids]
 
-    if user_match and re.search(r"\bfrom\b|\bby\b|\bthis\s+user\b|\buser\b", text, re.IGNORECASE):
-        result["mode"] = "user"
-        result["user_id"] = int(user_match.group(1))
+    if user_ids and re.search(r"\bfrom\b|\bby\b|\bthis\s+user\b|\buser\b", text, re.IGNORECASE):
+        result["mode"]     = "user"
+        result["user_ids"] = user_ids
         return result
 
     # Mode: KEYWORD
@@ -1562,14 +1583,14 @@ def parse_purge_command(text: str):
     if not kw_match:
         kw_match = re.search(r"with\s+(?:the\s+word\s+)?[\"']?(\w+)[\"']?", text, re.IGNORECASE)
     if kw_match:
-        result["mode"] = "keyword"
+        result["mode"]    = "keyword"
         result["keyword"] = kw_match.group(1)
         return result
 
     # Mode: COUNT — handles "delete 20", "delete the last 3", "clear last 50"
     num_match = re.search(r"(?:last\s+)?(\d+)", text, re.IGNORECASE)
     if num_match:
-        result["mode"] = "count"
+        result["mode"]   = "count"
         result["amount"] = int(num_match.group(1))
         return result
 
@@ -2630,12 +2651,13 @@ async def _handle_message(message: discord.Message):
         # ── Purge messages (MUST come before delete channel check) ───────────
         purge_cmd = parse_purge_command(user_text)
         if purge_cmd:
-            mode       = purge_cmd["mode"]
-            target_cid = purge_cmd["channel_id"] or message.channel.id
-            amount     = purge_cmd["amount"]
-            keyword    = purge_cmd["keyword"]
-            pu_user_id = purge_cmd["user_id"]
-            guild      = message.guild
+            mode        = purge_cmd["mode"]
+            target_cid  = purge_cmd["channel_id"] or message.channel.id
+            amount      = purge_cmd["amount"]
+            keyword     = purge_cmd["keyword"]
+            pu_user_ids = purge_cmd["user_ids"]
+            pu_role_id  = purge_cmd["role_id"]
+            guild       = message.guild
             try:
                 target_ch = await bot.fetch_channel(target_cid)
             except Exception:
@@ -2647,7 +2669,10 @@ async def _handle_message(message: discord.Message):
             elif mode == "keyword":
                 summary = f"Delete all messages containing **\"{keyword}\"** in {target_ch.mention}"
             elif mode == "user":
-                summary = f"Delete all messages from <@{pu_user_id}> in {target_ch.mention}"
+                user_tags = " ".join(f"<@{uid}>" for uid in pu_user_ids)
+                summary = f"Delete all messages from {user_tags} in {target_ch.mention}"
+            elif mode == "role":
+                summary = f"Delete all messages from <@&{pu_role_id}> members in {target_ch.mention}"
             elif mode == "all":
                 summary = f"Delete **ALL** messages in {target_ch.mention} — no matter how old"
             else:
@@ -2745,13 +2770,28 @@ async def _handle_message(message: discord.Message):
                                     await asyncio.sleep(1.2)
 
                     elif mode == "user":
-                        def user_check(m): return m.author.id == pu_user_id and m.id not in cleanup_ids
+                        uid_set = set(pu_user_ids)
+                        def user_check(m): return m.author.id in uid_set and m.id not in cleanup_ids
                         deleted = await target_ch.purge(limit=None, check=user_check)
                         deleted_count = len(deleted)
                         async for old_msg in target_ch.history(limit=None):
                             if old_msg.id in cleanup_ids:
                                 continue
-                            if old_msg.author.id == pu_user_id:
+                            if old_msg.author.id in uid_set:
+                                if await safe_delete(old_msg):
+                                    deleted_count += 1
+                                    await asyncio.sleep(1.2)
+
+                    elif mode == "role":
+                        role_obj = guild.get_role(pu_role_id)
+                        role_member_ids = {m.id for m in role_obj.members} if role_obj else set()
+                        def role_check(m): return m.author.id in role_member_ids and m.id not in cleanup_ids
+                        deleted = await target_ch.purge(limit=None, check=role_check)
+                        deleted_count = len(deleted)
+                        async for old_msg in target_ch.history(limit=None):
+                            if old_msg.id in cleanup_ids:
+                                continue
+                            if old_msg.author.id in role_member_ids:
                                 if await safe_delete(old_msg):
                                     deleted_count += 1
                                     await asyncio.sleep(1.2)

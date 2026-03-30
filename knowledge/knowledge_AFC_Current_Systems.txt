@@ -116,6 +116,7 @@ TEAM TIERS (assigned at end of each quarter):
 - Tier 3 (Entry): below 40 points (default for inactive/new teams)
 
 Teams must play at least 2 tournaments in a quarter to receive a tier.
+Teams that don't meet the minimum default to Tier 3.
 Teams must play at least 1 tournament in a month to appear on the monthly leaderboard.
 
 PLAYER TIERS:
@@ -123,12 +124,62 @@ PLAYER TIERS:
 - If you have no team, your tier is calculated from your personal quarterly score
 
 --- TOURNAMENT CLASSIFICATION ---
-Every AFC tournament is classified by prize pool:
-- Tier 1: $1,000+ prize pool OR official Free Fire event (2× point multiplier)
-- Tier 2: $300–$999 OR LAN event (1.5× point multiplier)
-- Tier 3: Below $300 (1× point multiplier)
+Every AFC tournament is classified by prize pool — this affects how many points you earn:
+- Tier 1: $1,000+ prize pool OR official Free Fire event → 2× point multiplier
+- Tier 2: $300–$999 OR LAN event → 1.5× point multiplier
+- Tier 3: Below $300 → 1× point multiplier (base)
 
-Bigger tournaments earn more points — win a Tier 1 event and earn 30 bonus points on top.
+Win bonus (added on top of your tournament score):
+- Win a Tier 1 event: +30 points
+- Win a Tier 2 event: +20 points
+- Win a Tier 3 event: +12 points
+
+Finals appearance bonus: +5 × tier multiplier per appearance
+
+--- HOW POINTS ARE CALCULATED ---
+
+PLACEMENT POINTS (per match):
+1st=12, 2nd=9, 3rd=8, 4th=7, 5th=6, 6th=5, 7th=4, 8th=3, 9th=2, 10th=1, 11th–12th=0
+
+Points are COMPRESSED — raw cumulative totals are converted to a score:
+
+Kill compression (total kills across all matches → score):
+0–50=3, 51–100=7, 101–200=12, 201–300=17, 301–500=23, 501–750=28,
+751–1000=33, 1001–1500=38, 1501–2000=43, 2001–3000=50, 3001–5000=58, 5001+=65
+
+Placement compression (total raw placement pts → score):
+0–50=5, 51–100=10, 101–200=17, 201–300=24, 301–500=31, 501–750=38,
+751–1000=44, 1001–1500=50, 1501–2000=56, 2001–3000=62, 3001+=70
+
+TEAM MONTHLY SCORE FORMULA:
+For each tournament that month:
+  score = (compress(placements) + compress(kills)) × tier_multiplier + win_bonus + finals_bonus
+
+Scrim contribution (capped at 30% of your tournament total):
+  scrim_pts = (placement_pts × 0.5) + (kill_pts × 0.5) + (wins × 3)
+  max_scrim_pts = total_tournament_pts × 0.30
+  counted_scrim_pts = min(scrim_pts, max_scrim_pts)
+
+Monthly total = tournament_pts + counted_scrim_pts
+
+PLAYER MONTHLY SCORE:
+- Kills (compressed, same scale): 3–65 pts
+- MVP award: +5 pts each
+- Finals appearance: +3 pts each
+- Team tournament win: +5 pts
+- Tournament participation: +1 pt per event
+- Scrim kills: 0.5× kill compression value
+- Scrim wins: +1 pt each
+
+QUARTERLY SCORE:
+Same formula as monthly but summed over 3 months, plus:
+- Prize money contribution (based on ₦ equivalent won)
+- Social media bonus (max 10 pts combined from Instagram + TikTok followers):
+  0–1,000=1pt, 1,001–5,000=3pts, 5,001–10,000=5pts, 10,001–25,000=7pts,
+  25,001–50,000=9pts, 50,001+=10pts
+
+ANNUAL LEADERBOARD:
+Sum of all 4 quarterly scores. Resets each January. Used for AFC Awards.
 
 --- TRANSFER WINDOWS & ROSTER RULES ---
 - Transfer Window: First 2 weeks of each quarter — players can move teams freely
