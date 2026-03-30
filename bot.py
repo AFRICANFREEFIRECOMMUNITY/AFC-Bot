@@ -869,6 +869,7 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 - Never make up tournament dates, prizes, or rules not in your knowledge base
 - Never take sides in disputes between players or teams
 - If someone is angry — calm, acknowledge, then help
+- Never end responses with follow-up offers like "let me know if you need anything else", "feel free to ask", "hope that helps", "is there anything else I can help with" — just answer and stop
 - The Transfer Window is currently OPEN (March 2026)
 - Current active events: Dynasty Cup series launching April 1, 2026 across 10 African countries
 - Platform stats: 4,081+ users, 323 teams, 11 tournaments, $5,750 total prize pool
@@ -2697,9 +2698,9 @@ async def _handle_message(message: discord.Message):
             embed.set_footer(text=f"Requested by {message.author.display_name} • Expires in 30 seconds")
             confirm_bot_msg = await message.reply(embed=embed, mention_author=True)
 
-            # IDs of all confirmation-related messages to clean up after
+            # IDs of confirmation-related messages to clean up after
+            # NOTE: message.id (admin's command) is intentionally excluded — it stays
             cleanup_ids = {
-                message.id,           # admin's original purge command
                 confirm_bot_msg.id,   # bot's confirmation request
             }
 
@@ -2817,17 +2818,16 @@ async def _handle_message(message: discord.Message):
                                 deleted_count += 1
                                 await asyncio.sleep(1.2)
 
-                    # Send result, then clean up all confirmation messages + result after 4 seconds
+                    # Send result — stays permanently so admin has a record
                     result_embed = discord.Embed(
                         description=f"✅ **{deleted_count}** message(s) deleted from {target_ch.mention}.",
                         color=EMBED_COLORS["general"]
                     )
-                    result_embed.set_footer(text=f"Action by {message.author.display_name} • This log will self-delete in 4s")
-                    result_msg = await message.channel.send(embed=result_embed)
+                    result_embed.set_footer(text=f"Action by {message.author.display_name}")
+                    await message.channel.send(embed=result_embed)
 
-                    # Wait then silently delete all confirmation/log messages
-                    await asyncio.sleep(4)
-                    for mid in list(cleanup_ids) + [result_msg.id]:
+                    # Clean up only the confirmation prompt and the user's yes/no reply
+                    for mid in list(cleanup_ids):
                         try:
                             m = await message.channel.fetch_message(mid)
                             await m.delete()
