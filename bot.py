@@ -603,7 +603,22 @@ def parse_ban_activity(activity: dict) -> dict:
     return result
 
 
-def build_ban_embed(parsed: dict) -> discord.Embed:
+async def fetch_team_details(team_name: str) -> dict | None:
+    """Fetch full team details (logo + members) from the API."""
+    url = f"{AFC_API_BASE}/team/get-team-details/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json={"team_name": team_name}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                return data.get("team")
+    except Exception as e:
+        print(f"⚠️  fetch_team_details failed for '{team_name}': {e}")
+        return None
+
+
+async def build_ban_embed(parsed: dict) -> discord.Embed:
     """Build the Discord embed for a ban or unban event."""
     is_ban      = parsed["is_ban"]
     entity_type = parsed["entity_type"]
@@ -617,7 +632,30 @@ def build_ban_embed(parsed: dict) -> discord.Embed:
     if is_ban and parsed.get("duration"):
         embed.add_field(name="Duration",   value=parsed["duration"], inline=True)
     embed.add_field(name="Reason",     value=parsed["reason"], inline=False)
-    embed.add_field(name="Actioned By", value=parsed["admin"], inline=True)
+
+    # For team bans/unbans — fetch logo and member list
+    if entity_type == "team" and parsed["name"] != "Unknown":
+        team = await fetch_team_details(parsed["name"])
+        if team:
+            # Team logo as thumbnail
+            logo_url = team.get("team_logo")
+            if logo_url:
+                embed.set_thumbnail(url=logo_url)
+
+            # List all current members
+            members = team.get("members", [])
+            if members:
+                lines = []
+                for m in members:
+                    username = m.get("username", "Unknown")
+                    role     = m.get("management_role") or m.get("in_game_role") or ""
+                    lines.append(f"• {username}" + (f" — {role}" if role else ""))
+                embed.add_field(
+                    name=f"Team Members ({len(members)})",
+                    value="\n".join(lines) or "—",
+                    inline=False
+                )
+
     embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
     embed.timestamp = datetime.now(timezone.utc)
     return embed
@@ -646,7 +684,7 @@ async def ban_poll_loop():
             for activity in reversed(new_bans):
                 try:
                     parsed  = parse_ban_activity(activity)
-                    embed   = build_ban_embed(parsed)
+                    embed   = await build_ban_embed(parsed)
                     ch_id   = BAN_ANNOUNCEMENT_CHANNEL_ID if parsed["is_ban"] else UNBAN_ANNOUNCEMENT_CHANNEL_ID
                     channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
                     await channel.send(embed=embed)
