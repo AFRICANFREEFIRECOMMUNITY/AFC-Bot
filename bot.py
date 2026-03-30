@@ -107,6 +107,12 @@ SEEN_BAN_ACTIVITIES_FILE = os.path.join(BASE_DIR, "seen_ban_activities.json")
 MAX_HISTORY      = 30
 HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
 
+# ── Transcription config ──────────────────────────────────────────────────────
+# Channel where the bot asks about stage transcription
+MODS_CHANNEL_ID = 1324442579265388644
+# Roles allowed to trigger/stop transcription (mods + support)
+TRANSCRIPTION_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
+
 # Supported media types
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 AUDIO_TYPES = (".mp3", ".mp4", ".wav", ".m4a", ".ogg", ".webm", ".flac")
@@ -1263,6 +1269,11 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
 # Tracks pending delete confirmations: {original_message_id: channel_to_delete_id}
 pending_deletions: dict[int, int] = {}
 
+# Active transcription sessions: guild_id → session info dict
+active_transcriptions: dict[int, dict] = {}
+# Pending stage transcription prompts: stage_channel_id → info dict
+pending_stage_prompts: dict[int, dict] = {}
+
 # Tracks who is currently waiting for a confirmation reply per channel.
 # {channel_id: user_id} — only that specific user's non-command messages are suppressed.
 _awaiting_confirmation: dict[int, int] = {}
@@ -1811,6 +1822,198 @@ last_bot_messages: dict[int, int] = {}
 last_bot_announcements: dict[int, int] = {}
 
 
+# ── Voice transcription ───────────────────────────────────────────────────────
+
+WHISPER_PROMPT = (
+    "Transcribe exactly as spoken. This is a Nigerian/African gaming community voice session. "
+    "Include Nigerian Pidgin English, African slang, informal speech, profanity, and all words "
+    "exactly as said — do not censor, clean up, or modify any language. "
+    "Common words you may hear: wahala, abeg, oya, sabi, dey, na, wey, comot, chop, sharp sharp, "
+    "e don do, no wahala, guy, bro, fam, gbege, ginger, level up, carry last, shine your eye."
+)
+
+
+def has_transcription_role(member: discord.Member) -> bool:
+    return any(role.id in TRANSCRIPTION_ROLES for role in member.roles)
+
+
+def parse_transcription_command(text: str):
+    """
+    Detect transcription start/stop commands.
+    Returns {"action": "start"|"stop", "channel_id": int|None} or None.
+    """
+    t = text.lower()
+    if re.search(r"\bstop\b.{0,20}(transcri|record)", t) or re.search(r"(transcri|record).{0,20}\bstop\b", t):
+        return {"action": "stop", "channel_id": None}
+    if re.search(r"\b(transcribe|transcription|record\s+(this\s+)?(call|meeting|stage|voice|session))\b", t):
+        ch_match = re.search(r"<#(\d+)>", text)
+        return {"action": "start", "channel_id": int(ch_match.group(1)) if ch_match else None}
+    return None
+
+
+async def _process_and_send_transcript(sink, text_channel, requester, start_time):
+    """Transcribe all recorded audio per-user and send a merged document."""
+    import io
+    await text_channel.send("⏳ Transcribing... this may take a moment.")
+
+    all_segments = []
+
+    for user_id, audio_data in sink.audio_data.items():
+        try:
+            user = bot.get_user(user_id)
+            username = user.display_name if user else f"User {user_id}"
+            audio_data.file.seek(0)
+
+            def _transcribe(file_bytes, uname):
+                return client_ai.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=("audio.wav", file_bytes, "audio/wav"),
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment"],
+                    prompt=WHISPER_PROMPT,
+                )
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _transcribe, audio_data.file, username)
+
+            for seg in result.segments:
+                all_segments.append({
+                    "username": username,
+                    "start":    seg.start,
+                    "text":     seg.text.strip(),
+                })
+        except Exception as e:
+            print(f"⚠️  Transcription failed for user {user_id}: {e}")
+
+    if not all_segments:
+        await text_channel.send("⚠️ No audio was captured or all transcriptions failed.")
+        return
+
+    all_segments.sort(key=lambda x: x["start"])
+
+    # ── Format the document ───────────────────────────────────────────────────
+    duration    = datetime.now(timezone.utc) - start_time
+    total_secs  = int(duration.total_seconds())
+    h, rem      = divmod(total_secs, 3600)
+    m, s        = divmod(rem, 60)
+    speakers    = sorted({seg["username"] for seg in all_segments})
+
+    lines = [
+        "=" * 60,
+        "AFC VOICE SESSION TRANSCRIPT",
+        f"Date     : {start_time.strftime('%Y-%m-%d')}",
+        f"Started  : {start_time.strftime('%H:%M UTC')}",
+        f"Duration : {h:02d}h {m:02d}m {s:02d}s",
+        f"Recorded : {requester}",
+        f"Speakers : {', '.join(speakers)}",
+        "=" * 60,
+        "",
+    ]
+
+    prev_speaker = None
+    for seg in all_segments:
+        ts_m, ts_s = divmod(int(seg["start"]), 60)
+        ts         = f"[{ts_m:02d}:{ts_s:02d}]"
+        if seg["username"] != prev_speaker:
+            lines.append(f"\n{seg['username']}  {ts}")
+            prev_speaker = seg["username"]
+        lines.append(f"  {seg['text']}")
+
+    transcript_text = "\n".join(lines)
+    file_date       = start_time.strftime("%Y-%m-%d_%H-%M")
+
+    transcript_file = discord.File(
+        fp=io.BytesIO(transcript_text.encode("utf-8")),
+        filename=f"transcript_{file_date}.txt",
+    )
+
+    embed = discord.Embed(
+        title="🎙️ Session Transcript Ready",
+        description=(
+            f"**Duration:** {h:02d}h {m:02d}m {s:02d}s\n"
+            f"**Speakers:** {len(speakers)}\n"
+            f"**Recorded by:** {requester.mention}"
+        ),
+        color=0x00A550,
+    )
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    embed.timestamp = datetime.now(timezone.utc)
+
+    await text_channel.send(embed=embed, file=transcript_file)
+
+
+@bot.event
+async def on_stage_instance_create(stage: discord.StageInstance):
+    """When a stage is created, ask mods if the bot should transcribe it."""
+    mods_channel = bot.get_channel(MODS_CHANNEL_ID)
+    if not mods_channel:
+        return
+
+    # Find the creator via audit logs
+    creator = None
+    try:
+        async for entry in stage.guild.audit_logs(
+            action=discord.AuditLogAction.stage_instance_create, limit=1
+        ):
+            if (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 15:
+                creator = entry.user
+            break
+    except Exception:
+        pass
+
+    creator_mention = creator.mention if creator else "Someone"
+
+    prompt_msg = await mods_channel.send(
+        f"🎙️ {creator_mention} has started a stage in {stage.channel.mention}.\n"
+        f"Should I join and transcribe the session? Reply **`yes`** or **`no`**."
+    )
+
+    pending_stage_prompts[stage.channel.id] = {"message_id": prompt_msg.id}
+
+    def stage_confirm_check(m):
+        return (
+            m.channel.id == MODS_CHANNEL_ID
+            and m.content.lower().strip() in ("yes", "no", "y", "n")
+            and isinstance(m.author, discord.Member)
+            and has_transcription_role(m.author)
+        )
+
+    try:
+        reply = await bot.wait_for("message", check=stage_confirm_check, timeout=120.0)
+
+        if reply.content.lower().strip() in ("yes", "y"):
+            try:
+                vc         = await stage.channel.connect()
+                sink       = discord.sinks.WaveSink()
+                start_time = datetime.now(timezone.utc)
+                requester  = reply.author
+
+                active_transcriptions[stage.guild.id] = {
+                    "vc":           vc,
+                    "text_channel": mods_channel,
+                    "requester":    requester,
+                    "start_time":   start_time,
+                }
+
+                async def _cb(s, *_):
+                    await _process_and_send_transcript(s, mods_channel, requester, start_time)
+
+                vc.start_recording(sink, _cb)
+                await mods_channel.send(
+                    f"✅ Joined {stage.channel.mention} and started transcribing.\n"
+                    f"Say `@bot stop transcribing` when the session is done."
+                )
+            except Exception as e:
+                await mods_channel.send(f"⚠️ Couldn't join the stage: {e}")
+        else:
+            await mods_channel.send("👍 Got it — not transcribing this stage.")
+
+    except asyncio.TimeoutError:
+        await mods_channel.send("⏱️ No response in 2 minutes — not transcribing.")
+    finally:
+        pending_stage_prompts.pop(stage.channel.id, None)
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
@@ -1860,20 +2063,23 @@ async def should_bot_respond(message_text: str) -> bool:
                 {
                     "role": "system",
                     "content": (
-                        "You are a classifier for a Discord bot for an African Free Fire gaming platform called AFC.\n"
-                        "Decide if a support bot should respond to this message.\n\n"
+                        "You are a classifier for a Discord bot on an African Free Fire gaming support channel (AFC).\n"
+                        "Decide if the BOT should respond to this message.\n\n"
+                        "The bot should ONLY respond when the message is clearly directed at the bot or the platform for help.\n\n"
                         "Reply YES if the message:\n"
-                        "- Is a question (any question at all)\n"
-                        "- Describes a problem or issue\n"
-                        "- Asks how to do something\n"
-                        "- Requests information about anything\n"
-                        "- Seems like the person needs help\n"
-                        "- Is unclear but could be a question\n\n"
-                        "Reply NO only if the message is CLEARLY:\n"
-                        "- Pure casual chat with no question (e.g. 'lol', 'gg', 'nice', 'let's go', 'we won')\n"
-                        "- A greeting with no question (e.g. 'hey guys', 'good morning')\n"
-                        "- Pure hype or reaction (e.g. 'fire bro', 'that's crazy')\n\n"
-                        "When in doubt, reply YES.\n"
+                        "- Asks about how to use the AFC platform (register, join, create team, etc.)\n"
+                        "- Describes a problem with their account, team, registration, or tournament\n"
+                        "- Is asking about AFC rules, features, events, or how something works\n"
+                        "- Is clearly seeking help or information from a bot/system\n\n"
+                        "Reply NO if the message is:\n"
+                        "- Casual chat, greetings, reactions, hype (e.g. 'lol', 'gg', 'nice', 'let's go', 'gm', 'fire bro')\n"
+                        "- A question one PERSON is asking ANOTHER PERSON (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?', 'when did you join?')\n"
+                        "- Someone gathering info from another user in a conversation\n"
+                        "- A reply or follow-up that is clearly part of a user-to-user exchange\n"
+                        "- A statement or comment that does not need a bot response\n\n"
+                        "IMPORTANT: A question like 'what is your team name?' or 'what is your username?' is directed at ANOTHER USER, not the bot — reply NO.\n"
+                        "A question like 'how do I register my team?' or 'why is my team not showing?' is directed at the bot — reply YES.\n"
+                        "When the message seems directed at another user rather than the bot, reply NO.\n"
                         "Reply with only YES or NO."
                     )
                 },
@@ -1883,7 +2089,7 @@ async def should_bot_respond(message_text: str) -> bool:
             temperature=0,
         )
         answer = response.choices[0].message.content.strip().upper()
-        return not answer.startswith("NO")  # default to YES unless clearly NO
+        return answer.startswith("YES")
     except Exception as e:
         print(f"⚠️  should_bot_respond error: {e} — defaulting to respond")
         return True  # always respond if classifier fails
@@ -1922,6 +2128,16 @@ async def _handle_message(message: discord.Message):
             return
         if re.match(r'^[\U00010000-\U0010ffff\U00002000-\U00002BFF\s]+$', content):
             return
+
+        # If this message is a Discord reply to another human (not the bot), skip it —
+        # it's a user-to-user conversation, not a request for bot help.
+        if message.reference is not None:
+            ref = message.reference.resolved
+            if ref is None:
+                # Reference not cached — play it safe and skip (likely user-to-user)
+                return
+            if isinstance(ref, discord.Message) and ref.author != bot.user:
+                return
 
         # Ask GPT if this message is worth responding to
         should_respond = await should_bot_respond(content)
@@ -2252,6 +2468,77 @@ async def _handle_message(message: discord.Message):
             )
         return
     # ── End announcement ─────────────────────────────────────────────────────
+
+    # ── Transcription commands (mod/support only) ────────────────────────────
+    if has_transcription_role(message.author):
+        trans_cmd = parse_transcription_command(user_text)
+        if trans_cmd:
+            action = trans_cmd["action"]
+
+            if action == "stop":
+                session = active_transcriptions.get(message.guild.id)
+                if not session:
+                    await message.reply("❌ No active transcription session running.", mention_author=True)
+                    return
+                session["vc"].stop_recording()
+                active_transcriptions.pop(message.guild.id, None)
+                await message.reply("⏹️ Stopped recording. Generating transcript...", mention_author=True)
+                return
+
+            elif action == "start":
+                if message.guild.id in active_transcriptions:
+                    await message.reply(
+                        "❌ Already transcribing a session. Say `@bot stop transcribing` first.",
+                        mention_author=True
+                    )
+                    return
+
+                ch_id    = trans_cmd.get("channel_id")
+                voice_ch = None
+
+                if ch_id:
+                    voice_ch = bot.get_channel(ch_id)
+                    if not isinstance(voice_ch, (discord.VoiceChannel, discord.StageChannel)):
+                        await message.reply("❌ That's not a valid voice or stage channel.", mention_author=True)
+                        return
+                elif message.author.voice:
+                    voice_ch = message.author.voice.channel
+                else:
+                    await message.reply(
+                        "❌ Please mention the channel: `@bot transcribe <#channel>` "
+                        "or join the voice channel first.",
+                        mention_author=True
+                    )
+                    return
+
+                try:
+                    vc         = await voice_ch.connect()
+                    sink       = discord.sinks.WaveSink()
+                    start_time = datetime.now(timezone.utc)
+                    requester  = message.author
+                    text_ch    = message.channel
+
+                    active_transcriptions[message.guild.id] = {
+                        "vc":           vc,
+                        "text_channel": text_ch,
+                        "requester":    requester,
+                        "start_time":   start_time,
+                    }
+
+                    async def _manual_cb(s, *_):
+                        await _process_and_send_transcript(s, text_ch, requester, start_time)
+
+                    vc.start_recording(sink, _manual_cb)
+                    await message.reply(
+                        f"✅ Joined {voice_ch.mention} and started transcribing.\n"
+                        f"Say `@bot stop transcribing` when the session is done.",
+                        mention_author=True
+                    )
+                except discord.ClientException:
+                    await message.reply("❌ I'm already connected to a voice channel in this server.", mention_author=True)
+                except Exception as e:
+                    await message.reply(f"⚠️ Couldn't join: {e}", mention_author=True)
+                return
 
     # ── Server management commands (admin only) ──────────────────────────────
     if has_admin_role(message.author):
