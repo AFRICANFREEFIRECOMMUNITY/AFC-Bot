@@ -2563,15 +2563,6 @@ async def _handle_message(message: discord.Message):
             ),
             inline=False,
         )
-        general.add_field(
-            name="📎 Files & Media",
-            value=(
-                "Send me an **image** — I'll describe or analyse it.\n"
-                "Send an **audio/video file** — I'll transcribe it.\n"
-                "Send a **PDF, Word, or Excel** file — I'll read and summarise it."
-            ),
-            inline=False,
-        )
         general.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
         general.timestamp = datetime.now(timezone.utc)
 
