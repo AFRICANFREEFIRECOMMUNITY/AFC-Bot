@@ -1,0 +1,158 @@
+=== AFC CURRENT SYSTEMS & FEATURES GUIDE ===
+Source: AFC Website (africanfreefirecommunity.com)
+Last Updated: March 2026
+
+--- AFC COMMUNITY STATS ---
+- 3,560+ Active Players
+- 1,200+ Tournaments Held
+- $500K+ Prize Pool Distributed
+- 256+ Teams Registered
+- Season 2026 is currently LIVE
+
+--- HOW TO CREATE AN ACCOUNT ---
+1. Visit: https://africanfreefirecommunity.com/create-account
+2. Fill in your username, email, and password
+3. Verify your email address (check spam if you don't see it)
+4. Log in at: https://africanfreefirecommunity.com/login
+
+You can log in with your email address OR your username.
+
+--- FORGOT YOUR PASSWORD? ---
+Visit: https://africanfreefirecommunity.com/forgot-password
+
+You can reset your password using either:
+- Your email address (Tab 1)
+- Your Free Fire UID (Tab 2)
+
+A 6-digit verification code will be sent to your email. It expires after 10 minutes.
+
+--- HOW TO JOIN A TOURNAMENT ---
+1. Log in to your AFC account
+2. Go to: https://africanfreefirecommunity.com/tournaments
+3. Browse upcoming events and click "View Tournament"
+4. Click "Register" and follow the steps
+5. For team tournaments, make sure your team is already created first
+
+Note: Discord account connection is optional. You do NOT need to connect Discord to register.
+
+Tournament status types:
+- Upcoming — Registration open or opening soon
+- Completed — Tournament ended; results viewable
+
+--- HOW TO CREATE & MANAGE A TEAM ---
+1. Log in to your account
+2. Go to the Teams section: https://africanfreefirecommunity.com/teams
+3. Click "Create Team"
+4. Enter your team name, tag/abbreviation, and required details
+5. Minimum 4 players required to participate in tournaments
+
+--- SCRIMS ---
+Scrims are listed alongside tournaments on the Tournaments page.
+They have their own tab on the page — look for the "Scrims" tab.
+Registration works the same way as tournaments.
+
+--- PLATFORM NAVIGATION ---
+- Home: https://africanfreefirecommunity.com/home
+- Tournaments & Scrims: https://africanfreefirecommunity.com/tournaments
+- Teams: https://africanfreefirecommunity.com/teams
+- News: https://africanfreefirecommunity.com/news
+- Awards: https://africanfreefirecommunity.com/awards
+- Leaderboards: https://africanfreefirecommunity.com/leaderboards
+- Rankings & Tiers: Coming Soon
+- Player Markets: Coming Soon
+- Rules: https://africanfreefirecommunity.com/rules
+- Shop: Coming Soon (launching April 2026)
+- About: https://africanfreefirecommunity.com/about
+- Contact: https://africanfreefirecommunity.com/contact
+- My Orders: https://africanfreefirecommunity.com/orders
+- My Profile: https://africanfreefirecommunity.com/profile
+
+--- DIAMOND SHOP (COMING SOON) ---
+AFC is launching a Free Fire Diamond Shop in April 2026.
+- Buy Free Fire diamonds directly on the AFC platform
+- Prices will be shown in Nigerian Naira (₦)
+- Pin codes will be delivered instantly after purchase
+- Full details at launch: https://africanfreefirecommunity.com/shop/diamonds
+
+The shop is NOT yet open to the public. Stay tuned for the April 2026 launch announcement.
+
+--- YOUR PROFILE PAGE ---
+From your profile you can:
+- View your username, stats, and account info
+- Edit your profile details (/profile/edit)
+- Change your password (/profile/change-password)
+- Connect or disconnect your Discord account (optional)
+
+--- LEADERBOARDS ---
+The leaderboards page shows tournament standings per event.
+- Select an event from the dropdown
+- Navigate between stages and groups
+- View kills, points, and rankings per match or overall
+
+Leaderboard: https://africanfreefirecommunity.com/leaderboards
+
+--- SEASON 2026 STRUCTURE ---
+AFC runs on a quarterly season system:
+- Season 1 (Q1): January – March
+- Season 2 (Q2): April – June
+- Season 3 (Q3): July – September
+- Season 4 (Q4): October – December
+
+Rankings and tiers reset each quarter.
+The Transfer Window is currently OPEN (March 2026) — the first 2 weeks of each quarter.
+Roster Lock begins Week 3 of each quarter.
+
+--- RANKING & TIERING SYSTEM ---
+
+AFC uses 3 performance tracks:
+1. Monthly Rankings — resets every month (short-term snapshot)
+2. Quarterly Tiering — resets every quarter (assigns your official tier)
+3. Annual Leaderboard — resets yearly (prestige; used for AFC Awards)
+
+TEAM TIERS (assigned at end of each quarter):
+- Elite: 150+ points
+- Tier 1 (Competitive): 90–149 points
+- Tier 2 (Rising): 40–89 points
+- Tier 3 (Entry): below 40 points (default for inactive/new teams)
+
+Teams must play at least 2 tournaments in a quarter to receive a tier.
+Teams must play at least 1 tournament in a month to appear on the monthly leaderboard.
+
+PLAYER TIERS:
+- If you are on a registered team, your tier = your team's tier
+- If you have no team, your tier is calculated from your personal quarterly score
+
+--- TOURNAMENT CLASSIFICATION ---
+Every AFC tournament is classified by prize pool:
+- Tier 1: $1,000+ prize pool OR official Free Fire event (2× point multiplier)
+- Tier 2: $300–$999 OR LAN event (1.5× point multiplier)
+- Tier 3: Below $300 (1× point multiplier)
+
+Bigger tournaments earn more points — win a Tier 1 event and earn 30 bonus points on top.
+
+--- TRANSFER WINDOWS & ROSTER RULES ---
+- Transfer Window: First 2 weeks of each quarter — players can move teams freely
+- Roster Lock: Week 3 onwards — no changes until next quarter
+- Players can only be on ONE team per quarter
+- A team needs at least 4 players to compete in tournaments
+
+--- DYNASTY CUP ---
+The Dynasty Cup series launches April 1, 2026 across 10 African countries.
+This is a major Tier 1 event with a large prize pool.
+Watch the AFC news and Discord for full details closer to the date.
+News: https://africanfreefirecommunity.com/news
+
+--- DISCORD CONNECTION ---
+Connecting your Discord to your AFC profile is OPTIONAL.
+You can connect it from your profile page to get server roles and notifications.
+It is NOT required to register for tournaments.
+
+To connect: Log in → go to your Profile → click Connect under Discord.
+
+--- CONTACT & SUPPORT ---
+Email: info@africanfreefirecommunity.com
+Discord: https://discord.gg/african-freefire-community-afc-920726990607237160
+Twitter: https://twitter.com/afcdatabase
+TikTok: https://www.tiktok.com/@africanfreefirecommunity
+Instagram: https://www.instagram.com/africanfreefirecommunity
+YouTube: https://www.youtube.com/@AFRICANFREEFIRECOMMUNITY1

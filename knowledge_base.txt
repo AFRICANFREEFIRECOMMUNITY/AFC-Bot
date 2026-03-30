@@ -1,119 +1,635 @@
 ============================
 AFC KNOWLEDGE BASE
 Source: https://africanfreefirecommunity.com
+Last Updated: 2026-03-29 20:10:53
 ============================
 
---- ABOUT AFC ---
-The African Freefire Community (AFC) is the premier Free Fire competitive platform for serious players across Africa.
-Website: https://africanfreefirecommunity.com
 
-Mission: To foster a competitive and supportive environment for Freefire players across Africa, promote esports, develop talent, and create opportunities for players to showcase their skills on a global stage.
+--- PAGE: /home ---
+African Freefire Community
+Log in
+Join Now
+Login
+Loading
 
-Vision: A thriving African Freefire esports scene recognized worldwide for its talent, passion, and professionalism.
 
-Values:
-- Integrity: Upholding the highest standards of fair play and sportsmanship.
-- Community: Fostering a supportive and inclusive environment for all players.
-- Excellence: Striving for continuous improvement in all endeavors.
-- Innovation: Embracing new technologies and strategies to advance the Freefire esports scene.
-- Empowerment: Providing resources and opportunities for players to develop their skills.
+--- PAGE: /about ---
+African Freefire Community
+Log in
+Join Now
+Login
+About AFC
+Our Mission
+The African Freefire Community (AFC) is dedicated to fostering a competitive and supportive environment for Freefire players across Africa. Our mission is to promote esports, develop talent, and create opportunities for players to showcase their skills on a global stage.
+Our Vision
+We envision a thriving African Freefire esports scene that is recognized worldwide for its talent, passion, and professionalism. Through our efforts, we aim to elevate African players and teams to compete at the highest levels of international tournaments.
+Our Values
+Integrity: We uphold the highest standards of fair play and sportsmanship.
+Community: We foster a supportive and inclusive environment for all players.
+Excellence: We strive for continuous improvement and excellence in all our endeavors.
+Innovation: We embrace new technologies and strategies to advance the Freefire esports scene.
+Empowerment: We provide resources and opportunities for players to develop their skills and achieve their goals.
 
-Stats:
-- 1,200+ Tournaments Held
-- $500K+ Prize Pool Distributed
-- Active players and registered teams (growing)
 
---- PLATFORM FEATURES ---
-- Competitive Tournaments: High-stakes tournaments with prizes and recognition.
-- Team Management: Create and manage esports teams with roster and strategy tools.
-- Skill Rankings: Comprehensive ranking system and leaderboards.
-- Event Scheduling: Integrated calendar and notification system so you never miss a match.
-- Fair Play: Secure environment with anti-cheat measures and fair play policies.
-- Achievements: Unlock badges, titles, and rewards as you climb the competitive ladder.
-- Season 2026 is currently LIVE.
+--- PAGE: /rules ---
+African Freefire Community
+Log in
+Join Now
+Login
+AFC Handbook
+The official governing framework for all African Freefire Community competitions.
+Player Eligibility & Requirements
+Core requirements for player participation including account, age, and regional criteria.
+Team Registration & Roster Management
+Guidelines for team formation, registration processes, and roster submissions.
+Code of Conduct & Player Behavior
+Standards of sportsmanship, prohibited behaviors, and professional interaction guidelines.
+Game Participation & Evidence Requirements
+Protocols for match participation, recording requirements, and submission of game evidence.
+Equipment & Technical Standards
+Approved devices, prohibited equipment, and technical compliance requirements.
+Dress Code & Uniform Requirements
+Official uniform standards and appearance requirements for tournament participation.
+Team Ownership & Management
+Rules governing team ownership, transfers, and management responsibilities.
+Roster Changes, Transfers & Player Loans
+Guidelines for roster modifications, transfer windows, and player loan agreements.
+Slot Buying & Selling
+Complete framework for tournament slot acquisitions, sales, and transfers.
+Contract Submission & Management
+Comprehensive guidelines for submitting, reviewing, and enforcing all esports contracts.
+Sponsor & Advertising Regulations
+Rules governing team sponsorships, advertising obligations, and promotional activities.
+Competition Structure & Scheduling
+Match formats, scheduling protocols, and mandatory tournament events.
+Communication with Organizers
+Response requirements, confidentiality obligations, and communication protocols.
+Disciplinary Actions & Violations
+Classification of offenses, investigation procedures, and sanction frameworks.
+Prize Distribution & Forfeiture
+Prize money framework, payment timelines, and conditions for prize forfeiture.
+Intellectual Property & Media Rights
+Ownership rights, usage permissions, and exploitation of tournament content.
+Organizer Veto Rights & Rule Alterations
+Tournament organizer's discretionary powers and authority over competition format.
+Monthly Ranking System
+Short-term performance measurement system updated monthly for teams and players.
+Quarterly Tiering System
+Long-term performance grading system determining competitive classification and benefits.
+Team Tier Classifications & Benefits
+Tier levels, point thresholds, and privileges associated with each classification.
+Metrics System Compliance & Penalties
+Rules governing data verification, point resets, and compliance requirements.
+Rule Discrepancies?
+AFC admins have final veto rights regarding rule interpretation and alterations. Contact us via Discord for immediate clarification.
+Contact Admin Support
 
---- HOW TO JOIN ---
-1. Visit https://africanfreefirecommunity.com/create-account
-2. Provide: Discord ID, Email address, IGN & Freefire UID, and required competitive data.
-3. You must be at least 13 years old.
-4. You must have an active Discord account.
 
---- RULES & HANDBOOK SUMMARY ---
-Full rules at: https://africanfreefirecommunity.com/rules
+--- PAGE: /contact ---
+African Freefire Community
+Log in
+Join Now
+Login
+Contact Us
+Get in Touch
+Name
+Email
+Message
+Contact Information
+Email
+info@africanfreefirecommunity.com
+Discord
+Join our Discord server:
+AFC
+Social Media
+Twitter
+Tiktok
+Facebook
+Instagram
+Youtube
 
-Player Eligibility:
-- Must meet account, age (13+), and regional requirements.
-- One account per player; multi-accounting is strictly prohibited.
-- Players cannot be on multiple teams simultaneously.
 
-Team Registration:
-- Teams must register and submit rosters.
-- Social media and contracts must be submitted.
-- Players must be in the AFC player database.
+--- PAGE: /terms-of-service ---
+African Freefire Community
+Log in
+Join Now
+Login
+AFC Terms of Service
+Effective Date:
+Upon Publication
+Entity:
+African Freefire Community (AFC)
+Jurisdiction:
+Federal Republic of Nigeria, operating across Africa
+1. Introduction & Agreement
+Welcome to the African Freefire Community (“AFC”, “we”, “our”, or “us”). These Terms of Service (“Terms”) govern your use of all AFC websites, platforms, tournaments, services, Discord integrations, digital storefronts, and any related products.
+By creating an account, connecting your Discord ID, participating in tournaments, using AFC's website, or purchasing virtual items, you confirm that:
+You have read, understood, and agree to these Terms.
+You accept AFC’s Privacy Policy.
+You are legally capable of entering this agreement.
+If you do not agree to these Terms, you must immediately discontinue use of AFC services. AFC reserves the right to update these Terms at any time. Continued use of AFC services constitutes acceptance of the updated Terms.
+2. Definitions
+For clarity throughout this document:
+“User” / “Player” – any individual who uses AFC services.
+“Account” – an AFC user profile linked to a Discord identity.
+“Virtual Items” – digital items, tournament passes, boosts, cosmetics, or other non-physical assets sold by AFC.
+“Services” – all AFC websites, software, tournaments, leaderboards, metrics systems, Discord features.
+“Fraudulent Activity” – cheating, impersonation, chargebacks, device manipulation, ban evasion, false information, or any activity intended to bypass AFC rules.
+“Banned/Blacklisted” – restricted from participating in AFC events based on AFC rules or investigations.
+3. Eligibility Requirements
+To use AFC services, you must:
+Be at least 13 years old
+Maintain an active Discord account
+Provide accurate account and identification information
+Not be banned, suspended, or blacklisted by AFC
+Meet all tournament eligibility and verification requirements
+AFC may request proof of age or identity at any time.
+4. Account Creation, Ownership & Responsibilities
+4.1 Account Creation
+To register an AFC account, you must provide:
+Discord ID (mandatory)
+Email address
+IGN & Freefire UID
+Any required competitive data
+4.2 Account Ownership
+Accounts belong to AFC; you only receive permission to use them.
+You may not sell, share, lease, or transfer your account.
+You are responsible for keeping your login credentials secure.
+4.3 Multi-Accounting
+Strictly prohibited:
+Creating multiple accounts
+Using alternate accounts to bypass bans
+Smurfing or duplicating device profiles
+AFC may merge, terminate, or permanently ban related accounts.
+5. Proper Use of AFC Services
+Users must not:
+Cheat, manipulate, exploit, or use unauthorized software
+Tamper with device identifiers or location data
+Impersonate individuals or teams
+Harass, abuse, or threaten other users
+Spread hate speech, explicit content, or illegal materials
+Disrupt or attack AFC servers
+Attempt to reverse engineer AFC systems
+Use AFC for unauthorized commercial activities
+AFC may take disciplinary actions against violations.
+6. Tournament Participation & Competitive Integrity
+By entering AFC tournaments, you agree to:
+Follow all tournament rulebooks
+Accept referee decisions as final
+Undergo verification or identity checks
+Submit required gameplay or device evidence
+Comply with anti-cheat investigations
+Respect metrics, tiering, and ranking outcomes
+Maintain good sportsmanship and professional conduct
+AFC reserves full authority to:
+Disqualify players or teams
+Adjust standings or scores
+Issue bans or penalties
+Reject fraudulent participation
+Overturn results based on investigations
+7. Enforcement: Bans, Blacklists & Penalties
+7.1 Grounds for Enforcement
+Violations may include:
+Cheating or suspicious behaviour
+Device manipulation or multi-device fraud
+Use of illegal software (aimbots, ESP, macros, etc.)
+Refusal to cooperate with investigations
+Harassment or misconduct
+False information during registration
+Chargeback attempts or financial fraud
+Breach of ToS or tournament rules
+7.2 Team-Level Enforcement (AFC Standard Policy)
+One banned/blacklisted player = 2-month ban for entire team
+Two banned players = 4-month team ban
+Three banned players = 6-month team ban
+(Team may appeal after serving 1 month.)
+7.3 Appeals
+Players/teams may submit a structured appeal. AFC holds full discretion over final decisions.
+8. Payments, Purchases & Digital Goods
+AFC provides paid services including tournament passes, digital goods, and virtual items.
+8.1 Payment Processing
+All payments are processed via third-party processors (e.g., Paystack, Flutterwave, Stripe). By purchasing, you agree to their respective terms.
+8.2 Accuracy of Billing Information
+Users must provide valid:
+Payment details
+Billing information
+Wallet or account information for payouts
+AFC is not responsible for failed transactions caused by inaccurate or neglected payment data.
+9. Virtual Items Policy (NO REFUNDS)
+Virtual Items include:
+Digital tournament passes
+Boosts, cosmetics, perks
+Tier or XP enhancements
+Premium features
+Any non-physical items sold by AFC
+9.1 Strict No-Refund Rule
+ALL VIRTUAL ITEM SALES ARE FINAL. NO EXCEPTIONS.
+Not refundable due to:
+Accidental purchase
+Unused items
+Misunderstanding the item
+Loss of access due to ban/blacklist
+Device or network issues
+Game performance dissatisfaction
+Duplicate purchases
+Account deletion
+Virtual Items cannot be:
+Refunded
+Reversed
+Exchanged
+Converted to money
+Transferred between accounts
+9.2 Modification of Virtual Items
+AFC may modify, remove, rebalance, or discontinue Virtual Items at any time without compensation.
+10. CHARGEBACK POLICY (Strict Enforcement)
+AFC operates a zero-tolerance policy for chargebacks.
+10.1 Chargeback Consequences
+If a user initiates a chargeback, AFC will:
+Immediately suspend the user’s account
+Place all associated teams under review
+Blacklist the user from all future tournaments
+Revoke any prizes, virtual items, or rankings earned
+Ban or penalize associated accounts
+Pursue recovery of losses, including:
+Chargeback fees
+Penalties from processors
+Administrative costs
+Damages to tournament integrity
+Report the incident to partnering esports bodies (if necessary)
+10.2 False Chargebacks
+Attempting to secure a refund through a chargeback instead of through AFC support is treated as fraudulent activity.
+11. Payouts, Prizes & Financial Requirements
+To receive prizes, users must:
+Provide accurate payout details
+Complete required identity verification
+Comply with tax/regulatory obligations in their region
+Follow AFC winner verification procedures
+AFC is not responsible for bank delays, third-party failures, or incorrect user information.
+12. Content Ownership & Licensing
+12.1 User-Generated Content
+By submitting content to AFC (videos, gameplay clips, images, responses, messages), you grant AFC a worldwide, irrevocable, royalty-free license to:
+Reproduce
+Edit
+Publish
+Distribute
+Display
+Share for marketing, highlights, tournament promotions, and documentation
+This license survives account termination.
+12.2 AFC Property
+All AFC designs, tournament structures, rules, software, metrics, scoring systems, and branding are AFC’s exclusive intellectual property.
+Users may not copy, redistribute, or replicate AFC systems without written permission.
+13. Website Usage & Restrictions
+Users agree not to:
+Scrape, crawl, or copy website data
+Attempt to access admin-only systems
+Reverse engineer platform features
+Upload viruses or malicious code
+Exploit system vulnerabilities
+Automate interactions using bots
+Interfere with operations or analytics
+AFC may pursue legal action for violations.
+14. Data Privacy
+AFC processes user data in accordance with the AFC Privacy Policy, which is fully integrated into these Terms.
+Users acknowledge that:
+AFC collects device, location, gameplay, behavioural, and payment data
+Anti-cheat data is mandatory and not deletable
+Tournament data, metrics, and ranking history are retained long-term
+Data may be stored in Nigeria or abroad through AWS
+Certain permissions are required for platform operation
+15. Cookies & Tracking Tools
+By using AFC services, you consent to:
+Functional cookies
+Security and device fingerprinting
+Anti-cheat tracking
+Analytics cookies
+Marketing cookies (optional)
+Users may opt out of non-essential cookies.
+16. Service Availability & Modifications
+AFC may modify or suspend any service at any time. This includes:
+Tournament formats
+Scoring systems
+Leaderboards
+Discord features
+Virtual item availability
+Website functionality
+Prize pools
+Scheduling changes
+AFC is not responsible for downtime or losses from service interruptions.
+17. Termination of Accounts
+AFC may suspend or terminate accounts for:
+Violations of ToS
+Fraudulent behaviour
+Chargebacks
+Security risks
+Misconduct toward staff
+Offensive or illegal behaviour
+Non-cooperation with investigations
+Users may request account closure, but AFC will retain competitive and anti-cheat data.
+18. Disclaimer of Warranties
+AFC services are provided “as is” and “as available.” We do not guarantee:
+Continuous uptime
+Error-free performance
+Uninterrupted tournaments
+Bug-free website features
+Integration stability with Discord or Freefire
+Accuracy of user-submitted data
+That metrics or analytics will always be precise
+Users assume all risks related to platform use.
+19. Limitation of Liability
+To the fullest extent permitted by law, AFC is not liable for:
+Lost opportunities, prizes, or earnings
+Data loss or corruption
+Bans or suspensions
+Payment processor failures
+Connectivity or lag issues
+Delayed payouts
+Website downtime
+Actions of other users
+Indirect or consequential damages
+AFC’s maximum liability is limited to the total amount the user paid to AFC in the past 12 months.
+20. Indemnification
+You agree to indemnify and hold AFC harmless from any claims, liabilities, damages, losses, or expenses resulting from:
+Your actions or misconduct
+Your breach of these Terms
+Your participation in tournaments
+Third-party disputes involving your behaviour
+21. Governing Law & Dispute Resolution
+These Terms are governed by the laws of the Federal Republic of Nigeria. All disputes must be resolved through Nigerian courts or any jurisdiction AFC deems appropriate.
+22. Contact Information
+African Freefire Community (AFC)
+Official Email:
+info@africanfreefirecommunity.com
+Official Discord Server: AFC Community
 
-Code of Conduct:
-- No cheating, no harassment, no hate speech.
-- No use of aimbots, ESP, macros, or unauthorized software.
-- No bribery or match-fixing.
-- Sportsmanship is mandatory at all times.
 
-Game Evidence:
-- All matches must be recorded and submitted as evidence.
-- No pauses allowed during matches.
-- Players must be ready before scheduled match time.
+--- PAGE: /privacy-policy ---
+African Freefire Community
+Log in
+Join Now
+Login
+AFC Privacy Policy Agreement
+Effective Date:
+Upon Publication
+Entity:
+African Freefire Community (AFC)
+1. Introduction
+The African Freefire Community (“AFC”, “we”, “our”, or “us”) operates a competitive esports and community platform serving players across Africa. This Privacy Policy explains how AFC collects, uses, stores, protects, and shares information when users access the AFC website, participate in tournaments, engage with the AFC metrics system, or use any AFC-integrated services.
+By creating an account or participating in AFC activities, you agree to the practices described in this Policy.
+2. Information We Collect
+We collect data required to operate tournaments, maintain competitive integrity, enhance user experience, and secure the platform. This includes:
+2.1 Identity & Profile Data
+Name (optional)
+Username / IGN
+Freefire UID
+Discord ID (for OAuth and verification)
+Email address
+Profile information you provide
+2.2 Device & Technical Data
+Device type
+Operating system
+Browser type
+Device identifiers
+Advertising identifiers
+IP address
+Location data (coarse and device-based)
+Session activity
+Device fingerprinting data (anti-cheat and fraud prevention)
+2.3 Gameplay & Performance Data
+Collected automatically when you participate in AFC tournaments/scrims:
+Kills, damage, placements
+Team participation
+Tournament rankings
+Metrics and tier progression
+Ban or blacklist information
+2.4 Payment & Transaction Data
+Payment card or wallet information (processed through third-party processors)
+Purchase history
+Prize payout records
+Financial verifications (if required)
+2.5 Behavioural & Interaction Data
+Clickstream data
+Time on page
+Session analytics
+Engagement with website features
+Device behaviour signals used for anti-cheat and fraud prevention
+3. How We Use Your Information
+AFC processes collected data for the following business-critical purposes:
+3.1 Security, Integrity & Anti-Cheat
+Detect cheating, fraud, smurfing, multi-accounting, impersonation
+Enforce bans, penalties, and blacklist decisions
+Protect tournament fairness
+Monitor suspicious device or location activity
+3.2 Tournament Operations
+Verify player identity and eligibility
+Rank players and calculate metrics
+Manage leaderboards, rewards, and qualifications
+Maintain historical competition records
+3.3 Platform Analytics & Personalisation
+Improve user experience
+Personalize tournaments, recommendations, and content
+Conduct performance analytics
+Monitor website usage and engagement
+3.4 Marketing & Communications
+Send tournament updates, notifications, newsletters
+Deliver sponsor or partner announcements
+Discord-linked communications
+(Users may opt out of marketing.)
+3.5 Payments & Financial Processing
+Manage tournament prize payouts
+Handle user purchases
+Verify financial transactions for compliance
+3.6 Legal & Compliance
+Respond to lawful requests
+Maintain audit trails
+Protect AFC’s legal, financial, and operational interests
+4. Third-Party Data Processors
+Your data may be shared with trusted third parties who support AFC operations. These partners process data strictly under AFC’s instructions.
+These include:
+AWS – hosting and infrastructure
+Discord – identity verification and communication
+Analytics providers (Google Analytics, Mixpanel, or equivalent)
+Payment processors (e.g., Stripe, Paystack, Flutterwave)
+Anti-cheat or security providers
+Email service providers
+Development partners under NDA
+AFC does not sell user data.
+5. Data Retention
+To preserve competitive integrity, prevent abuse, and maintain historical records, AFC retains certain data long-term.
+5.1 Retention Schedule
+Account Data: retained for as long as the account remains active, and up to 10 years after inactivity.
+Tournament Data: retained indefinitely.
+Metrics, Rankings & Historical Performance: retained indefinitely.
+Ban / Blacklist Records: retained indefinitely.
+Device & Location Logs: retained for 5–7 years.
+Payment & Financial Data: retained for up to 7 years (standard financial compliance).
+6. User Rights
+AFC respects user rights while balancing the operational needs of esports integrity. Users may request:
+Access to their personal data
+Correction of inaccurate data
+Opt-out from marketing communications
+Opt-out from non-essential analytics tracking
+Users cannot request deletion of:
+Tournament performance data
+Metrics, rankings, and historical records
+Ban or blacklist information
+Device or fraud-prevention identifiers
+Data tied to prize winnings or financial records
+Anti-cheat data
+These categories are exempt from deletion to preserve competitive fairness and security.
+7. Children’s Privacy
+Participation in AFC requires users to be at least 13 years old, aligning with global online service standards and Discord’s minimum age requirement.
+We do not knowingly collect information from anyone under 13.
+Accounts found to be underage will be disabled.
+8. Cookies & Tracking Technologies
+AFC uses cookies and tracking tools for functionality, analytics, and security.
+8.1 Mandatory Cookies (cannot opt-out)
+Functional site operations
+Authentication
+Anti-cheat and device fingerprinting
+Security monitoring
+Session management
+8.2 Optional Cookies (opt-out allowed)
+Marketing cookies
+Analytics not tied to security or anti-cheat
+UX testing cookies
+Advertising identifiers
+Users can manage preferences in their browser settings and AFC cookie banner.
+9. Data Security Measures
+We implement industry-standard security protocols, including:
+End-to-end encrypted data storage
+Strict access controls limited to developers and core management
+Two-factor authentication for admin access
+Audit logs for data exports
+No storage of personal data on staff devices
+Routine security reviews
+Automated threat monitoring
+10. Cross-Border Data Transfers
+By using AFC, you acknowledge that your data may be processed in Nigeria and other countries where we operate or maintain cloud infrastructure (including AWS regions).
+We use reasonable technical and contractual safeguards to protect data regardless of location.
+11. Data Breach Policy
+AFC maintains a structured incident response protocol. In the event of a breach involving user data, AFC will:
+Contain the breach and secure systems
+Conduct a full investigation
+Notify high-risk affected users
+Provide disclosure within 72 hours when legally required
+Document all findings and remediation steps
+Apply sanctions for internal violations or misuse
+12. Legal Basis for Processing
+Depending on your region, AFC processes data based on:
+Contractual necessity (running tournaments, verifying eligibility)
+Legitimate interest (site security, anti-cheat, analytics)
+Consent (marketing, optional cookies)
+Legal obligations (financial records, fraud investigations)
+13. Changes to This Policy
+AFC may update this Privacy Policy periodically. Material changes will be communicated through the website, Discord, or email notifications.
+Continued use of AFC services constitutes acceptance of changes.
+14. Contact Information
+For data queries, complaints, or access requests, contact:
+African Freefire Community (AFC)
+Email:
+info@africanfreefirecommunity.com
+Discord: Official AFC Server
 
-Ranking System:
-- Monthly rankings updated for teams and players.
-- Quarterly tiering system (Tier 1, Tier 2, etc.) based on tournament wins, kills, placements, prize money, and social media metrics.
 
-Disciplinary Actions:
-- Minor and major offenses handled with sanctions.
-- One banned player = 2-month ban for entire team.
-- Two banned players = 4-month team ban.
-- Three banned players = 6-month team ban.
-- Appeals are allowed after serving 1 month.
+--- PAGE: /tournaments ---
+African Freefire Community
+Log in
+Join Now
+Login
+Loading...
 
-Slot Buying/Selling:
-- Tournament slots can be bought and sold.
-- AFC charges a transaction fee.
-- Strict timeline for slot transfers.
 
-Prize Distribution:
-- Winners must provide accurate payout details and complete identity verification.
-- AFC is not responsible for bank delays or incorrect user information.
+--- PAGE: /teams ---
+African Freefire Community
+Log in
+Join Now
+Login
+Teams
+Explore and manage Freefire teams
+Create Team
+All Teams
+View and manage all teams in the system
+No teams available.
 
---- TERMS OF SERVICE HIGHLIGHTS ---
-Full ToS: https://africanfreefirecommunity.com/terms-of-service
-Effective: Upon Publication | Jurisdiction: Federal Republic of Nigeria
 
-Key points:
-- Accounts belong to AFC; you only receive permission to use them.
-- No account selling, sharing, or transferring.
-- Virtual item sales are FINAL — NO REFUNDS under any circumstances.
-- Zero-tolerance chargeback policy: chargebacks result in immediate account suspension, blacklisting, and penalties.
-- User-generated content submitted to AFC grants AFC a worldwide license to use it.
-- AFC can modify or suspend services at any time.
-- Disputes governed by laws of the Federal Republic of Nigeria.
+--- PAGE: /news ---
+African Freefire Community
+Log in
+Join Now
+Login
+News & Updates
+No articles found
+No articles available at the moment
 
---- CONTACT & SOCIAL MEDIA ---
-Email: info@africanfreefirecommunity.com
-Discord Server: https://discord.gg/african-freefire-community-afc-920726990607237160
-Twitter: https://twitter.com/afcdatabase
-TikTok: https://www.tiktok.com/@africanfreefirecommunity
-Facebook: https://www.facebook.com/share/1G4D9jDyyt/
-Instagram: https://www.instagram.com/africanfreefirecommunity
-YouTube: https://www.youtube.com/@AFRICANFREEFIRECOMMUNITY1
 
---- PLATFORM LINKS ---
-Home: https://africanfreefirecommunity.com/home
-Tournaments: https://africanfreefirecommunity.com/tournaments
-Teams: https://africanfreefirecommunity.com/teams
-News: https://africanfreefirecommunity.com/news
-Awards: https://africanfreefirecommunity.com/awards
-About: https://africanfreefirecommunity.com/about
-Contact: https://africanfreefirecommunity.com/contact
-Rules: https://africanfreefirecommunity.com/rules
-Privacy Policy: https://africanfreefirecommunity.com/privacy-policy
-Terms of Service: https://africanfreefirecommunity.com/terms-of-service
-Create Account: https://africanfreefirecommunity.com/create-account
-Login: https://africanfreefirecommunity.com/login
+--- PAGE: /awards ---
+Best Overall Creator (Male)
+JOKKIE
+Official Winner
+Community Favorite
+Best Overall Creator (Female)
+SCARLETT
+Official Winner
+Community Favorite
+Best Streamer (Male)
+RUDY
+Official Winner
+Community Favorite
+Best Streamer (Female)
+SCARLETT
+Official Winner
+Community Favorite
+Funniest Creator (Male)
+NNAYIZOOM
+Official Winner
+Community Favorite
+Funniest Creator (Female)
+SUCCESS
+Official Winner
+Community Favorite
+Best Editor (Male)
+DARKSEIDFF
+Official Winner
+Community Favorite
+Best Editor (Female)
+STEPHHATESPEOPLE
+Official Winner
+Community Favorite
+Upcoming Creator (Male)
+THABANG
+Official Winner
+Community Favorite
+Upcoming Creator (Female)
+LUNA
+Official Winner
+Community Favorite
+Attractive Creator (Male)
+DMS
+Official Winner
+Community Favorite
+Attractive Creator (Female)
+SCARLETT
+Official Winner
+Community Favorite
+Educational Content (Male)
+VIC VIX
+Official Winner
+Community Favorite
+Best Music Creator (Male)
+ELVICCI
+Official Winner
+Community Favorite
+Best Voiceover (Male)
+BAYMAX
+Official Winner
+Community Favorite
+Favorite DUO (Male)
+JOKKIE
+Official Winner
+Community Favorite
+Favorite DUO (MALE)
+XIXSCO
+Official Winner
+Community Favorite
+Congratulations to all Nominees!
+Every participant has contributed to making the Nigerian Free Fire community what it is today. See you in NFCA 2026!

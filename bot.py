@@ -56,11 +56,50 @@ SUPPORT_ROLES = [
     920732760094703746,
 ]
 
+# Scrims Master role — gets access to staff/backend knowledge
+SCRIMS_MASTER_ROLE_ID = 1011438178630107207
+
+# Roles that can access staff-level knowledge (backend ops, scoring, scrims admin info)
+STAFF_KNOWLEDGE_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES + [SCRIMS_MASTER_ROLE_ID])
+
+# Channel where unanswered/escalated questions go
+MODERATION_SUPPORT_CHANNEL_ID = 1026913984923840542
+
+# Channel where auto-generated news announcements are posted
+NEWS_ANNOUNCEMENT_CHANNEL_ID = 955773076786798643
+
+# How often to auto-refresh the knowledge base (hours)
+SCRAPE_INTERVAL_HOURS = 6
+
+# How often to poll the backend for new events/bans/news (seconds)
+NEWS_POLL_INTERVAL_SECS    = 120   # every 2 minutes
+EVENT_POLL_INTERVAL_SECS   = 120
+BAN_POLL_INTERVAL_SECS     = 60    # every 1 minute
+
+# Channel for tournament announcements
+TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID = 920795335272579102
+# Channel for scrim announcements + role to ping
+SCRIM_ANNOUNCEMENT_CHANNEL_ID      = 1487971199454679050
+SCRIMS_PING_ROLE_ID                = 1395722795878584391
+# Channel where admins announce bans (player or team)
+BAN_ANNOUNCEMENT_CHANNEL_ID   = 1317799517084454932
+# Channel where admins announce unbans
+UNBAN_ANNOUNCEMENT_CHANNEL_ID = 1353759565543637062
+
+# AFC backend API base
+AFC_API_BASE = "https://api.africanfreefirecommunity.com"
+
+# Files to persist poll state across restarts
+SEEN_NEWS_FILE          = os.path.join(BASE_DIR, "seen_news.json")
+SEEN_EVENTS_FILE        = os.path.join(BASE_DIR, "seen_events.json")
+SEEN_BAN_ACTIVITIES_FILE = os.path.join(BASE_DIR, "seen_ban_activities.json")
+
 # Always use the folder where bot.py lives — avoids permission errors on Windows
-BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
-KNOWLEDGE_DIR    = os.path.join(BASE_DIR, "knowledge")
-HISTORY_FILE     = os.path.join(BASE_DIR, "conversation_history.json")
-BASE_KNOWLEDGE   = os.path.join(BASE_DIR, "knowledge_base.txt")
+BASE_DIR              = os.path.dirname(os.path.abspath(__file__))
+KNOWLEDGE_DIR         = os.path.join(BASE_DIR, "knowledge")
+STAFF_KNOWLEDGE_DIR   = os.path.join(BASE_DIR, "knowledge_staff")
+HISTORY_FILE          = os.path.join(BASE_DIR, "conversation_history.json")
+BASE_KNOWLEDGE        = os.path.join(BASE_DIR, "knowledge_base.txt")
 
 MAX_HISTORY      = 30
 HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
@@ -151,6 +190,481 @@ async def auto_purge_loop():
         await asyncio.sleep(3600)   # run every hour
 
 
+async def keep_typing(channel: discord.abc.Messageable, stop_event: asyncio.Event):
+    """Re-send typing indicator every 8 seconds so it never expires during long AI calls."""
+    while not stop_event.is_set():
+        try:
+            await channel.trigger_typing()
+        except Exception:
+            pass
+        await asyncio.sleep(8)
+
+
+def _do_scrape() -> int:
+    """Synchronous scrape — runs in a thread executor. Returns total characters written."""
+    import requests
+    from bs4 import BeautifulSoup
+
+    BASE_URL = "https://africanfreefirecommunity.com"
+    PAGES = ["/home", "/about", "/rules", "/contact", "/terms-of-service",
+             "/privacy-policy", "/tournaments", "/teams", "/news", "/awards"]
+    HEADERS = {"User-Agent": "Mozilla/5.0 (AFC-Bot-Scraper/1.0)"}
+
+    sections = [
+        "============================",
+        "AFC KNOWLEDGE BASE",
+        f"Source: {BASE_URL}",
+        f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "============================\n",
+    ]
+
+    for path in PAGES:
+        url = BASE_URL + path
+        try:
+            res = requests.get(url, headers=HEADERS, timeout=10)
+            res.raise_for_status()
+            soup = BeautifulSoup(res.text, "html.parser")
+            for tag in soup(["nav", "footer", "script", "style", "img", "button"]):
+                tag.decompose()
+            main = soup.find("main") or soup.find("body")
+            if main:
+                lines = [l.strip() for l in main.get_text(separator="\n").splitlines() if l.strip()]
+                content = "\n".join(lines)
+                if content:
+                    sections.append(f"\n--- PAGE: {path} ---\n{content}\n")
+        except Exception as e:
+            print(f"⚠️  Scrape failed for {path}: {e}")
+
+    output = "\n".join(sections)
+    dest = os.path.join(BASE_DIR, "knowledge_base.txt")
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(output)
+    return len(output)
+
+
+async def refresh_knowledge_base() -> int:
+    """Run the website scraper in a thread so the event loop isn't blocked."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _do_scrape)
+
+
+async def auto_scrape_loop():
+    """Background task — re-scrapes the AFC website every SCRAPE_INTERVAL_HOURS hours."""
+    await bot.wait_until_ready()
+    await asyncio.sleep(SCRAPE_INTERVAL_HOURS * 3600)   # skip first run (already fresh on startup)
+    while not bot.is_closed():
+        try:
+            chars = await refresh_knowledge_base()
+            print(f"🔄  Auto-scrape complete — {chars:,} chars written to knowledge_base.txt")
+        except Exception as e:
+            print(f"⚠️  Auto-scrape failed: {e}")
+        await asyncio.sleep(SCRAPE_INTERVAL_HOURS * 3600)
+
+
+def load_seen_news() -> set:
+    """Load the set of already-announced news IDs from disk."""
+    if os.path.exists(SEEN_NEWS_FILE):
+        try:
+            with open(SEEN_NEWS_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+
+def save_seen_news(seen: set):
+    """Persist the set of announced news IDs to disk."""
+    try:
+        with open(SEEN_NEWS_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(seen), f)
+    except Exception as e:
+        print(f"⚠️  Could not save seen_news.json: {e}")
+
+
+async def fetch_all_news() -> list:
+    """Call the AFC API and return the list of news article dicts, newest first."""
+    url = f"{AFC_API_BASE}/auth/get-all-news/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data.get("news", [])
+    except Exception as e:
+        print(f"⚠️  fetch_all_news failed: {e}")
+        return []
+
+
+async def generate_news_embed(article: dict) -> discord.Embed:
+    """Use GPT-4o to write a teaser snippet, then build the Discord embed."""
+    slug = article.get("slug", "")
+    article_url = f"https://africanfreefirecommunity.com/news/{slug}" if slug else "https://africanfreefirecommunity.com/news"
+    title = article.get("news_title", "New Article")
+    content = (article.get("content") or "")[:1500]   # trim to avoid token overflow
+    category = article.get("category", "")
+    related_event = article.get("related_event")
+    image_url = article.get("images_url")
+
+    prompt = f"""You are the AFC Bot news writer for the African Freefire Community.
+
+A new article has just been published:
+Title: {title}
+Category: {category}
+{f'Related event: {related_event}' if related_event else ''}
+Article content (may be truncated):
+{content or '(No content available)'}
+
+Write a short Discord announcement to hype up this article.
+Rules:
+- Body: 2-4 sentences only — tease the reader, do NOT reveal everything
+- End the body with: **Read the full story → {article_url}**
+- Use 1-2 emojis that fit the topic
+- Tone: exciting, community-first, never corporate
+
+Output ONLY valid JSON (no markdown fences):
+{{"body": "..."}}
+"""
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.8,
+        )
+        raw = re.sub(r"```json|```", "", response.choices[0].message.content.strip()).strip()
+        body = json.loads(raw).get("body", "")
+    except Exception:
+        body = f"A new article has just dropped! 🔥\n\n**Read it here → {article_url}**"
+
+    embed = discord.Embed(
+        title=title,
+        description=body,
+        color=0x00A550,
+        url=article_url,
+    )
+    if image_url:
+        embed.set_image(url=image_url)
+    author_name = article.get("author", "AFC")
+    embed.set_author(name=f"AFC News — {category}" if category else "AFC News")
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
+async def news_poll_loop():
+    """Background task — polls the AFC API every NEWS_POLL_INTERVAL_SECS for new articles."""
+    await bot.wait_until_ready()
+
+    # On first boot, mark all existing articles as already seen so we don't
+    # flood the channel with old news on every restart.
+    seen = load_seen_news()
+    if not seen:
+        articles = await fetch_all_news()
+        seen = {str(a["news_id"]) for a in articles}
+        save_seen_news(seen)
+        print(f"📰  News poll: seeded {len(seen)} existing article(s). Watching for new ones.")
+
+    while not bot.is_closed():
+        await asyncio.sleep(NEWS_POLL_INTERVAL_SECS)
+        try:
+            articles = await fetch_all_news()
+            new_articles = [a for a in articles if str(a["news_id"]) not in seen]
+
+            if new_articles:
+                news_channel = bot.get_channel(NEWS_ANNOUNCEMENT_CHANNEL_ID)
+                if not news_channel:
+                    news_channel = await bot.fetch_channel(NEWS_ANNOUNCEMENT_CHANNEL_ID)
+
+                # Post oldest-first so they appear in chronological order
+                for article in reversed(new_articles):
+                    try:
+                        embed = await generate_news_embed(article)
+                        await news_channel.send(embed=embed)
+                        seen.add(str(article["news_id"]))
+                        print(f"📰  Announced news: {article.get('news_title', article['news_id'])}")
+                        await asyncio.sleep(2)   # small gap between multiple posts
+                    except Exception as e:
+                        print(f"⚠️  Failed to post news {article.get('news_id')}: {e}")
+
+                save_seen_news(seen)
+
+        except Exception as e:
+            print(f"⚠️  news_poll_loop error: {e}")
+
+
+# ── Event polling ─────────────────────────────────────────────────────────────
+
+def load_seen_events() -> set:
+    if os.path.exists(SEEN_EVENTS_FILE):
+        try:
+            with open(SEEN_EVENTS_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+
+def save_seen_events(seen: set):
+    try:
+        with open(SEEN_EVENTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(seen), f)
+    except Exception as e:
+        print(f"⚠️  Could not save seen_events.json: {e}")
+
+
+async def fetch_all_events() -> list:
+    """Uses the existing public events endpoint — no backend changes needed."""
+    url = f"{AFC_API_BASE}/events/get-all-events/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data.get("events", [])
+    except Exception as e:
+        print(f"⚠️  fetch_all_events failed: {e}")
+        return []
+
+
+async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
+    """Build the announcement embed for a tournament or scrim. Returns (embed, optional_ping)."""
+    name       = event.get("event_name", "New Event")
+    comp_type  = event.get("competition_type", "tournament")
+    start_date = event.get("event_date", "TBD")
+    prizepool  = event.get("prizepool", "")
+    max_slots  = event.get("number_of_participants", "")
+    registered = event.get("total_registered_competitors", 0)
+    banner_url = event.get("event_banner")
+    slug       = event.get("slug", "")
+    event_url  = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else "https://africanfreefirecommunity.com/tournaments"
+
+    is_scrim = comp_type.lower() == "scrims"
+    color    = 0xFFD700 if is_scrim else 0x00A550
+
+    lines = []
+    if start_date: lines.append(f"📅 **Date:** {start_date}")
+    if prizepool:  lines.append(f"💰 **Prize Pool:** {prizepool}")
+    if max_slots:  lines.append(f"👥 **Slots:** {registered}/{max_slots}")
+    lines.append(f"\n🔗 **[View & Register →]({event_url})**")
+
+    embed = discord.Embed(
+        title=f"{'🎮 New Scrim' if is_scrim else '🏆 New Tournament'}: {name}",
+        description="\n".join(lines),
+        color=color,
+        url=event_url,
+    )
+    if banner_url:
+        embed.set_image(url=banner_url)
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    embed.timestamp = datetime.now(timezone.utc)
+
+    ping = f"<@&{SCRIMS_PING_ROLE_ID}>" if is_scrim else None
+    return embed, ping
+
+
+async def event_poll_loop():
+    """Background task — polls for new tournaments and scrims every EVENT_POLL_INTERVAL_SECS."""
+    await bot.wait_until_ready()
+
+    seen = load_seen_events()
+    if not seen:
+        events = await fetch_all_events()
+        seen = {str(e["event_id"]) for e in events}
+        save_seen_events(seen)
+        print(f"🎮  Event poll: seeded {len(seen)} existing event(s). Watching for new ones.")
+
+    while not bot.is_closed():
+        await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
+        try:
+            events = await fetch_all_events()
+            new_events = [e for e in events if str(e["event_id"]) not in seen]
+
+            for event in reversed(new_events):
+                try:
+                    embed, ping = await build_event_embed(event)
+                    is_scrim = event.get("competition_type", "").lower() == "scrims"
+                    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
+
+                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
+                    await channel.send(content=ping, embed=embed)
+                    seen.add(str(event["event_id"]))
+                    print(f"🎮  Announced event: {event.get('event_name')}")
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    print(f"⚠️  Failed to post event {event.get('event_id')}: {e}")
+
+            if new_events:
+                save_seen_events(seen)
+
+        except Exception as e:
+            print(f"⚠️  event_poll_loop error: {e}")
+
+
+# ── Automatic ban / unban polling ────────────────────────────────────────────
+# Polls GET /auth/get-admin-activities/ every BAN_POLL_INTERVAL_SECS.
+# Detects new banned_team / unbanned_team / banned_player / unbanned_player
+# entries and posts embeds automatically — no Discord command needed.
+
+BAN_ACTIONS = {"banned_team", "unbanned_team", "banned_player", "unbanned_player"}
+
+
+def load_seen_ban_activities() -> set:
+    """Load set of already-announced ban activity keys from disk."""
+    if os.path.exists(SEEN_BAN_ACTIVITIES_FILE):
+        try:
+            with open(SEEN_BAN_ACTIVITIES_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+
+def save_seen_ban_activities(seen: set):
+    """Persist the set of announced ban activity keys to disk."""
+    try:
+        with open(SEEN_BAN_ACTIVITIES_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(seen), f)
+    except Exception as e:
+        print(f"⚠️  Could not save seen_ban_activities.json: {e}")
+
+
+def make_activity_key(activity: dict) -> str:
+    """Stable unique key for a ban activity (no ID field in the API response)."""
+    ts   = str(activity.get("timestamp", ""))
+    act  = activity.get("action", "")
+    desc = (activity.get("description") or "")[:60]
+    return f"{ts}|{act}|{desc}"
+
+
+async def fetch_admin_activities() -> list:
+    """Call the AFC API and return the latest admin activity records."""
+    url = f"{AFC_API_BASE}/auth/get-admin-activities/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data.get("admin_activities", [])
+    except Exception as e:
+        print(f"⚠️  fetch_admin_activities failed: {e}")
+        return []
+
+
+def parse_ban_activity(activity: dict) -> dict:
+    """
+    Parse a ban/unban activity into structured fields.
+
+    Backend description formats:
+      banned_team:   "Team X (ID: Y) banned until DATE for reason: REASON"
+      unbanned_team: "Team X (ID: Y) unbanned"
+      banned_player: "Player X (ID: Y) banned for N days for reason: REASON"
+      unbanned_player:"Player X (ID: Y) unbanned"
+    """
+    action = activity.get("action", "")
+    desc   = activity.get("description", "")
+    admin  = activity.get("admin_user", "Admin")
+
+    result = {
+        "action":      action,
+        "entity_type": "team" if "team" in action else "player",
+        "is_ban":      action in ("banned_team", "banned_player"),
+        "name":        "Unknown",
+        "reason":      "No reason provided",
+        "duration":    "",
+        "admin":       admin,
+    }
+
+    # Extract entity name — everything between "Team/Player " and " (ID:"
+    name_match = re.match(r"(?:Team|Player)\s+(.+?)\s+\(ID:", desc)
+    if name_match:
+        result["name"] = name_match.group(1).strip()
+
+    if action == "banned_team":
+        # "... banned until DATE for reason: REASON"
+        until_m  = re.search(r"banned until\s+(\S+)", desc)
+        reason_m = re.search(r"for reason:\s+(.+)$", desc)
+        if until_m:
+            result["duration"] = f"Until {until_m.group(1)}"
+        if reason_m:
+            result["reason"] = reason_m.group(1).strip()
+
+    elif action == "banned_player":
+        # "... banned for N days for reason: REASON"
+        days_m   = re.search(r"banned for\s+(\d+)\s+days", desc)
+        reason_m = re.search(r"for reason:\s+(.+)$", desc)
+        if days_m:
+            result["duration"] = f"{days_m.group(1)} days"
+        if reason_m:
+            result["reason"] = reason_m.group(1).strip()
+
+    return result
+
+
+def build_ban_embed(parsed: dict) -> discord.Embed:
+    """Build the Discord embed for a ban or unban event."""
+    is_ban      = parsed["is_ban"]
+    entity_type = parsed["entity_type"]
+    label       = "Player" if entity_type == "player" else "Team"
+
+    title = f"🔨 {label} Banned" if is_ban else f"✅ {label} Unbanned"
+    color = 0xFF4444 if is_ban else 0x00A550
+
+    embed = discord.Embed(title=title, color=color)
+    embed.add_field(name=label,        value=parsed["name"],   inline=True)
+    if is_ban and parsed.get("duration"):
+        embed.add_field(name="Duration",   value=parsed["duration"], inline=True)
+    embed.add_field(name="Reason",     value=parsed["reason"], inline=False)
+    embed.add_field(name="Actioned By", value=parsed["admin"], inline=True)
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
+async def ban_poll_loop():
+    """Background task — polls admin activities for ban/unban events every BAN_POLL_INTERVAL_SECS."""
+    await bot.wait_until_ready()
+
+    # On first boot, seed from existing activities so we don't re-announce old bans.
+    seen = load_seen_ban_activities()
+    if not seen:
+        activities = await fetch_admin_activities()
+        ban_acts   = [a for a in activities if a.get("action") in BAN_ACTIONS]
+        seen       = {make_activity_key(a) for a in ban_acts}
+        save_seen_ban_activities(seen)
+        print(f"🔨  Ban poll: seeded {len(seen)} existing ban record(s). Watching for new ones.")
+
+    while not bot.is_closed():
+        await asyncio.sleep(BAN_POLL_INTERVAL_SECS)
+        try:
+            activities = await fetch_admin_activities()
+            ban_acts   = [a for a in activities if a.get("action") in BAN_ACTIONS]
+            new_bans   = [a for a in ban_acts if make_activity_key(a) not in seen]
+
+            for activity in reversed(new_bans):
+                try:
+                    parsed  = parse_ban_activity(activity)
+                    embed   = build_ban_embed(parsed)
+                    ch_id   = BAN_ANNOUNCEMENT_CHANNEL_ID if parsed["is_ban"] else UNBAN_ANNOUNCEMENT_CHANNEL_ID
+                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
+                    await channel.send(embed=embed)
+
+                    key = make_activity_key(activity)
+                    seen.add(key)
+                    print(f"🔨  Ban announcement: {activity.get('action')} — {parsed['name']}")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    print(f"⚠️  Failed to post ban activity: {e}")
+
+            if new_bans:
+                save_seen_ban_activities(seen)
+
+        except Exception as e:
+            print(f"⚠️  ban_poll_loop error: {e}")
+
+
 # ── Knowledge base loader ────────────────────────────────────────────────────
 def load_knowledge() -> str:
     knowledge_parts = []
@@ -235,9 +749,40 @@ def load_knowledge() -> str:
     return "\n\n".join(knowledge_parts)
 
 
-def build_system_prompt() -> str:
+def load_staff_knowledge() -> str:
+    """Load staff-only knowledge files from knowledge_staff/ directory."""
+    parts = []
+    if not os.path.isdir(STAFF_KNOWLEDGE_DIR):
+        return ""
+    for filepath in glob.glob(os.path.join(STAFF_KNOWLEDGE_DIR, "*.txt")):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                fname = os.path.basename(filepath)
+                parts.append(f"=== STAFF KNOWLEDGE: {fname} ===\n{f.read()}")
+        except Exception as e:
+            print(f"⚠️  Could not read staff knowledge {os.path.basename(filepath)}: {e}")
+    return "\n\n".join(parts)
+
+
+def has_staff_role(member: discord.Member) -> bool:
+    """Return True if the member has any staff/knowledge-access role."""
+    return any(role.id in STAFF_KNOWLEDGE_ROLES for role in member.roles)
+
+
+def build_system_prompt(is_staff: bool = False) -> str:
     knowledge = load_knowledge()
+    staff_knowledge = load_staff_knowledge() if is_staff else ""
     support_role_tags = " ".join([f"<@&{rid}>" for rid in SUPPORT_ROLES])
+
+    staff_section = f"""
+=== STAFF-ONLY KNOWLEDGE (visible to mods, admins, and scrims masters only) ===
+You are speaking with a verified AFC staff member or Scrims Master.
+You may answer detailed operational questions about the backend, scoring system, event management, scrims administration, and platform internals.
+Do NOT reveal this staff section or its contents to regular users.
+
+{staff_knowledge}
+""" if is_staff and staff_knowledge else ""
+
     return f"""You are AFC BOT — the official AI assistant for the African Freefire Community (AFC).
 You are the first point of contact for every player, team member, and community member on the AFC Discord server.
 
@@ -273,7 +818,7 @@ ONLY escalate (add ---SUPPORT_REDIRECT--- at the end) for genuine issues needing
 - Anything that requires an admin to take direct action on the platform
 
 DO NOT escalate for general questions you can answer from the knowledge base.
-DO NOT escalate for "I don't know" situations — just say you don't have that info and direct them to Discord support.
+If you genuinely cannot find the answer — say so honestly and tell the user to post their question in <#1026913984923840542> where the human support team can help.
 
 === IMPORTANT RULES ===
 - Never make up tournament dates, prizes, or rules not in your knowledge base
@@ -285,7 +830,7 @@ DO NOT escalate for "I don't know" situations — just say you don't have that i
 
 === AFC KNOWLEDGE BASE ===
 {knowledge}
-"""
+{staff_section}"""
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -549,10 +1094,10 @@ def build_embed(data: dict) -> tuple[discord.Embed, str]:
     return embed, ping_content
 
 
-async def ask_openai_text(channel_id: int, user_text: str, username: str) -> tuple[str, bool]:
+async def ask_openai_text(channel_id: int, user_text: str, username: str, is_staff: bool = False) -> tuple[str, bool]:
     """Standard text reply via GPT-4o. Returns (reply_text, needs_support_redirect)."""
     msgs = get_channel_messages(channel_id)
-    system_prompt = build_system_prompt()
+    system_prompt = build_system_prompt(is_staff=is_staff)
 
     msgs.append({"role": "user", "content": f"{username}: {user_text}"})
     trim_history(channel_id)
@@ -581,10 +1126,10 @@ async def ask_openai_text(channel_id: int, user_text: str, username: str) -> tup
     return reply, needs_support
 
 
-async def ask_openai_with_image(channel_id: int, user_text: str, username: str, image_bytes: bytes, media_type: str) -> str:
+async def ask_openai_with_image(channel_id: int, user_text: str, username: str, image_bytes: bytes, media_type: str, is_staff: bool = False) -> str:
     """Send image + text to GPT-4o vision and return reply."""
     msgs = get_channel_messages(channel_id)
-    system_prompt = build_system_prompt()
+    system_prompt = build_system_prompt(is_staff=is_staff)
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -1204,10 +1749,18 @@ async def on_ready():
     load_history_from_disk()
     purge_expired_history()
     bot.loop.create_task(auto_purge_loop())
+    bot.loop.create_task(auto_scrape_loop())
+    bot.loop.create_task(news_poll_loop())
+    bot.loop.create_task(event_poll_loop())
+    bot.loop.create_task(ban_poll_loop())
     print(f"✅  AFC Bot is online as {bot.user} (id: {bot.user.id})")
     print(f"📌  Listening in {len(ALLOWED_CHANNELS)} channels")
     print(f"📚  Knowledge base loaded: {len(load_knowledge())} characters")
     print(f"🕒  Conversation history: saved to disk, auto-clears after 24 hours")
+    print(f"🔄  Auto-scrape: every {SCRAPE_INTERVAL_HOURS}h (first run in {SCRAPE_INTERVAL_HOURS}h)")
+    print(f"📰  News poll: every {NEWS_POLL_INTERVAL_SECS}s → channel {NEWS_ANNOUNCEMENT_CHANNEL_ID}")
+    print(f"🎮  Event poll: every {EVENT_POLL_INTERVAL_SECS}s → tournament ch {TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID} / scrim ch {SCRIM_ANNOUNCEMENT_CHANNEL_ID}")
+    print(f"🔨  Ban poll: every {BAN_POLL_INTERVAL_SECS}s → ban ch {BAN_ANNOUNCEMENT_CHANNEL_ID} / unban ch {UNBAN_ANNOUNCEMENT_CHANNEL_ID}")
 
 
 @bot.event
@@ -1296,6 +1849,7 @@ async def _handle_message(message: discord.Message):
     # Strip the @mention
     user_text = message.content.replace(f"<@{bot.user.id}>", "").strip()
     username  = message.author.display_name
+    is_staff  = has_staff_role(message.author)
 
     # ── Edit command check FIRST — must run before announcement to avoid confusion ──
     if has_admin_role(message.author):
@@ -2204,72 +2758,91 @@ async def _handle_message(message: discord.Message):
 
     # ── Handle attachments ───────────────────────────────────────────────────
     if message.attachments:
-        async with message.channel.typing():
-            attachment = message.attachments[0]
-            att_type   = get_attachment_type(attachment.filename)
+        attachment = message.attachments[0]
+        att_type   = get_attachment_type(attachment.filename)
 
-            # 🖼️ IMAGE — GPT-4o Vision
-            if att_type == "image":
+        # 🖼️ IMAGE — GPT-4o Vision
+        if att_type == "image":
+            stop = asyncio.Event()
+            asyncio.create_task(keep_typing(message.channel, stop))
+            try:
+                image_bytes = await download_attachment(attachment)
+                ext = os.path.splitext(attachment.filename)[1].lower().strip(".")
+                media_type_map = {
+                    "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                    "png": "image/png", "gif": "image/gif", "webp": "image/webp"
+                }
+                media_type = media_type_map.get(ext, "image/jpeg")
+                prompt = user_text if user_text else "What is in this image? Give context relevant to AFC or Free Fire if applicable."
+                reply  = await ask_openai_with_image(message.channel.id, prompt, username, image_bytes, media_type, is_staff=is_staff)
+            except Exception as e:
+                reply = f"⚠️ I couldn't analyze that image. Error: {e}"
+            finally:
+                stop.set()
+            await message.reply(reply, mention_author=True)
+            return
+
+        # 🎵 AUDIO — Whisper transcription → GPT-4o reply
+        elif att_type == "audio":
+            try:
+                await message.reply("🎵 Got your audio! Give me a sec to listen...", mention_author=True)
+                audio_bytes = await download_attachment(attachment)
+                transcript  = await transcribe_audio(audio_bytes, attachment.filename)
+
+                if not transcript.strip():
+                    await message.reply("⚠️ I couldn't make out what was said. Try sending a clearer recording.", mention_author=True)
+                    return
+
+                combined = f"[Audio message transcribed]: {transcript}"
+                if user_text:
+                    combined += f"\n[User also typed]: {user_text}"
+
+                stop = asyncio.Event()
+                asyncio.create_task(keep_typing(message.channel, stop))
                 try:
-                    image_bytes = await download_attachment(attachment)
-                    ext = os.path.splitext(attachment.filename)[1].lower().strip(".")
-                    media_type_map = {
-                        "jpg": "image/jpeg", "jpeg": "image/jpeg",
-                        "png": "image/png", "gif": "image/gif", "webp": "image/webp"
-                    }
-                    media_type = media_type_map.get(ext, "image/jpeg")
-                    prompt = user_text if user_text else "What is in this image? Give context relevant to AFC or Free Fire if applicable."
-                    reply  = await ask_openai_with_image(message.channel.id, prompt, username, image_bytes, media_type)
-                    await message.reply(reply, mention_author=True)
-                except Exception as e:
-                    await message.reply(f"⚠️ I couldn't analyze that image. Error: {e}", mention_author=True)
-                return
-
-            # 🎵 AUDIO — Whisper transcription → GPT-4o reply
-            elif att_type == "audio":
-                try:
-                    await message.reply("🎵 Got your audio! Give me a sec to listen...", mention_author=True)
-                    audio_bytes = await download_attachment(attachment)
-                    transcript  = await transcribe_audio(audio_bytes, attachment.filename)
-
-                    if not transcript.strip():
-                        await message.reply("⚠️ I couldn't make out what was said. Try sending a clearer recording.", mention_author=True)
-                        return
-
-                    combined = f"[Audio message transcribed]: {transcript}"
-                    if user_text:
-                        combined += f"\n[User also typed]: {user_text}"
-
-                    reply, needs_support = await ask_openai_text(message.channel.id, combined, username)
-                    await message.reply(f"🎙️ **I heard:** _{transcript}_\n\n{reply}", mention_author=True)
-                    if needs_support:
-                        await send_support_redirect(message)
-                except Exception as e:
-                    await message.reply(f"⚠️ I couldn't transcribe that audio. Error: {e}", mention_author=True)
-                return
-
-            # 🎥 VIDEO — Acknowledge, can't analyze
-            elif att_type == "video":
-                context = f"{username} sent a video called '{attachment.filename}'. " \
-                          f"Acknowledge you received it but explain warmly that you can't watch or analyze videos yet. " \
-                          f"They also said: '{user_text}'. Reply naturally and in character as AFC Bot."
-                reply, needs_support = await ask_openai_text(message.channel.id, context, username)
-                await message.reply(reply, mention_author=True)
+                    reply, needs_support = await ask_openai_text(message.channel.id, combined, username, is_staff=is_staff)
+                finally:
+                    stop.set()
+                await message.reply(f"🎙️ **I heard:** _{transcript}_\n\n{reply}", mention_author=True)
                 if needs_support:
                     await send_support_redirect(message)
-                return
+            except Exception as e:
+                await message.reply(f"⚠️ I couldn't transcribe that audio. Error: {e}", mention_author=True)
+            return
 
-            # ❓ Unknown file type
-            else:
+        # 🎥 VIDEO — Acknowledge, can't analyze
+        elif att_type == "video":
+            context = f"{username} sent a video called '{attachment.filename}'. " \
+                      f"Acknowledge you received it but explain warmly that you can't watch or analyze videos yet. " \
+                      f"They also said: '{user_text}'. Reply naturally and in character as AFC Bot."
+            stop = asyncio.Event()
+            asyncio.create_task(keep_typing(message.channel, stop))
+            try:
+                reply, needs_support = await ask_openai_text(message.channel.id, context, username, is_staff=is_staff)
+            finally:
+                stop.set()
+            await message.reply(reply, mention_author=True)
+            if needs_support:
+                await send_support_redirect(message)
+            return
+
+        # ❓ Unknown file type
+        else:
+            stop = asyncio.Event()
+            asyncio.create_task(keep_typing(message.channel, stop))
+            try:
                 reply, needs_support = await ask_openai_text(
                     message.channel.id,
                     f"{username} sent a file called '{attachment.filename}'. {user_text}",
-                    username
+                    username,
+                    is_staff=is_staff,
                 )
-                await message.reply(reply, mention_author=True)
-                if needs_support:
-                    await send_support_redirect(message)
-                return
+            finally:
+                stop.set()
+            await message.reply(reply, mention_author=True)
+            if needs_support:
+                await send_support_redirect(message)
+            return
 
     # ── Standard text reply ──────────────────────────────────────────────────
     if not user_text:
@@ -2279,12 +2852,15 @@ async def _handle_message(message: discord.Message):
     if reply_context:
         user_text = reply_context + user_text
 
-    async with message.channel.typing():
-        try:
-            reply, needs_support = await ask_openai_text(message.channel.id, user_text, username)
-        except Exception as exc:
-            reply = f"⚠️ Something went wrong. Please try again or contact info@africanfreefirecommunity.com\nError: {exc}"
-            needs_support = False
+    stop = asyncio.Event()
+    asyncio.create_task(keep_typing(message.channel, stop))
+    try:
+        reply, needs_support = await ask_openai_text(message.channel.id, user_text, username, is_staff=is_staff)
+    except Exception as exc:
+        reply = f"⚠️ Something went wrong. Please try again or contact info@africanfreefirecommunity.com\nError: {exc}"
+        needs_support = False
+    finally:
+        stop.set()
 
     sent_reply = await message.reply(reply, mention_author=True)
     last_bot_messages[message.channel.id] = sent_reply.id
