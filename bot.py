@@ -2051,39 +2051,57 @@ async def on_message(message: discord.Message):
         print(f"⚠️  Unhandled error in on_message: {e}")
 
 
-async def should_bot_respond(message_text: str) -> bool:
+async def should_bot_respond(message_text: str, image_bytes: bytes = None, image_media_type: str = None) -> bool:
     """
     Use GPT to quickly decide if a message is worth the bot responding to.
+    If an image is provided, it is included so the classifier can read it
+    before deciding — the image content + the question together determine intent.
     Defaults to True on any error so the bot never silently ignores questions.
     """
+    system_prompt = (
+        "You are a classifier for a Discord bot on an African Free Fire gaming support channel (AFC).\n"
+        "Decide if the BOT should respond to this message.\n\n"
+        "The bot should ONLY respond when the message is clearly directed at the bot or the platform for help.\n\n"
+        "Reply YES if the message:\n"
+        "- Asks about how to use the AFC platform (register, join, create team, etc.)\n"
+        "- Describes a problem with their account, team, registration, or tournament\n"
+        "- Is asking about AFC rules, features, events, or how something works\n"
+        "- Is clearly seeking help or information from a bot/system\n"
+        "- Shares a screenshot of an AFC page, email, or app and asks a question about it\n\n"
+        "Reply NO if the message is:\n"
+        "- Casual chat, greetings, reactions, hype (e.g. 'lol', 'gg', 'nice', 'let's go', 'gm', 'fire bro')\n"
+        "- A question one PERSON is asking ANOTHER PERSON (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?', 'when did you join?')\n"
+        "- Someone gathering info from another user in a conversation\n"
+        "- A reply or follow-up that is clearly part of a user-to-user exchange\n"
+        "- A statement or comment that does not need a bot response\n"
+        "- A screenshot shared casually (meme, flex, celebration) with no question or help-seeking intent\n\n"
+        "IMPORTANT: A question like 'what is your team name?' or 'what is your username?' is directed at ANOTHER USER, not the bot — reply NO.\n"
+        "A question like 'how do I register my team?' or 'why is my team not showing?' is directed at the bot — reply YES.\n"
+        "If an image is provided, read it first — its content should inform your decision alongside the text.\n"
+        "When the message seems directed at another user rather than the bot, reply NO.\n"
+        "Reply with only YES or NO."
+    )
     try:
+        if image_bytes and image_media_type:
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            user_content = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{image_media_type};base64,{image_b64}"}
+                },
+                {
+                    "type": "text",
+                    "text": message_text if message_text else "(no text — image only)"
+                }
+            ]
+        else:
+            user_content = message_text
+
         response = client_ai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a classifier for a Discord bot on an African Free Fire gaming support channel (AFC).\n"
-                        "Decide if the BOT should respond to this message.\n\n"
-                        "The bot should ONLY respond when the message is clearly directed at the bot or the platform for help.\n\n"
-                        "Reply YES if the message:\n"
-                        "- Asks about how to use the AFC platform (register, join, create team, etc.)\n"
-                        "- Describes a problem with their account, team, registration, or tournament\n"
-                        "- Is asking about AFC rules, features, events, or how something works\n"
-                        "- Is clearly seeking help or information from a bot/system\n\n"
-                        "Reply NO if the message is:\n"
-                        "- Casual chat, greetings, reactions, hype (e.g. 'lol', 'gg', 'nice', 'let's go', 'gm', 'fire bro')\n"
-                        "- A question one PERSON is asking ANOTHER PERSON (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?', 'when did you join?')\n"
-                        "- Someone gathering info from another user in a conversation\n"
-                        "- A reply or follow-up that is clearly part of a user-to-user exchange\n"
-                        "- A statement or comment that does not need a bot response\n\n"
-                        "IMPORTANT: A question like 'what is your team name?' or 'what is your username?' is directed at ANOTHER USER, not the bot — reply NO.\n"
-                        "A question like 'how do I register my team?' or 'why is my team not showing?' is directed at the bot — reply YES.\n"
-                        "When the message seems directed at another user rather than the bot, reply NO.\n"
-                        "Reply with only YES or NO."
-                    )
-                },
-                {"role": "user", "content": message_text}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
             ],
             max_tokens=5,
             temperature=0,
@@ -2124,7 +2142,7 @@ async def _handle_message(message: discord.Message):
         content = message.content.strip()
 
         # Quick filter — skip very short messages and pure emoji reactions
-        if len(content) < 8:
+        if len(content) < 8 and not message.attachments:
             return
         if re.match(r'^[\U00010000-\U0010ffff\U00002000-\U00002BFF\s]+$', content):
             return
@@ -2139,8 +2157,28 @@ async def _handle_message(message: discord.Message):
             if isinstance(ref, discord.Message) and ref.author != bot.user:
                 return
 
-        # Ask GPT if this message is worth responding to
-        should_respond = await should_bot_respond(content)
+        # If there's an image, download it so the classifier can read it
+        # alongside the text before deciding whether to respond.
+        classifier_image_bytes = None
+        classifier_media_type = None
+        image_attachment = next(
+            (a for a in message.attachments if get_attachment_type(a.filename) == "image"),
+            None
+        )
+        if image_attachment:
+            ext = os.path.splitext(image_attachment.filename)[1].lower().strip(".")
+            media_type_map = {
+                "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "png": "image/png", "gif": "image/gif", "webp": "image/webp"
+            }
+            classifier_media_type = media_type_map.get(ext, "image/jpeg")
+            try:
+                classifier_image_bytes = await download_attachment(image_attachment)
+            except Exception:
+                pass  # if download fails, classify on text alone
+
+        # Ask GPT (with image if present) whether this message needs a response
+        should_respond = await should_bot_respond(content, classifier_image_bytes, classifier_media_type)
         if not should_respond:
             return
 
