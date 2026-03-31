@@ -193,6 +193,29 @@ This is a major Tier 1 event with a large prize pool.
 Watch the AFC news and Discord for full details closer to the date.
 News: https://africanfreefirecommunity.com/news
 
+--- TEAM COUNTRY CLASSIFICATION ---
+Some events are locked to specific countries. A team's country is determined by where the majority of its members are located. The rules are:
+
+1. MAJORITY WINS — The country where the most members are based is the team's country.
+   Example: 6 players → 3 in Nigeria, 2 in South Africa, 1 in Kenya = Nigerian team.
+
+2. TIE BETWEEN TWO COUNTRIES — If two countries share the highest count, the team owner/captain's location decides.
+   Example: 6 players → 3 in Nigeria, 3 in South Africa = team country is wherever the captain/owner is.
+
+3. NO CLEAR MAJORITY (multi-way split) — The team owner/captain's location decides.
+   Example: 5 players → 2 in Nigeria, 2 in South Africa, captain in Kenya = Kenyan team.
+
+This classification is why a team may be unable to register for a particular country's tournament even if some members are from that country. If a team believes their country is wrong, they should contact an AFC admin.
+
+DYNASTY CUP ELIGIBILITY & YDPAY REQUIREMENTS:
+
+- Discord linking is NOT required for Dynasty Cup registration. It is optional for all teams.
+- YDPAY app registration is ONLY required for Nigerian teams.
+  Nigerian teams must: register on the YDPAY app → complete KYC → then during the Dynasty Cup event registration on the AFC site, enter their correct YDPAY ID as part of the registration form. The YDPAY ID is entered during event registration, NOT on the AFC profile.
+- After submitting, Nigerian teams should regularly check the AFC website to see if their registration was approved or rejected. If rejected (e.g. wrong YDPAY ID or KYC not complete), they can edit their registration to fix the details and resubmit.
+- Teams from ALL OTHER countries (South Africa, Ghana, Kenya, Tanzania, Ethiopia, Senegal, Madagascar, Mozambique, Cape Verde, etc.) do NOT need to download or register on the YDPAY app to be eligible.
+- All teams must have correct player details and meet standard AFC eligibility requirements.
+
 --- DISCORD CONNECTION ---
 Connecting your Discord to your AFC profile is OPTIONAL.
 You can connect it from your profile page to get server roles and notifications.

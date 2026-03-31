@@ -501,9 +501,11 @@ Registering for an Event
 | |
 | ✅ For Squad events: make sure you are on a team with enough members. |
 | |
-| ✅ Link your Discord account to receive role assignments and match room details. |
+| ✅ Link your Discord account (OPTIONAL) — only needed for automatic role assignments and notifications. Discord linking is NOT required to register for events. |
 | |
 | ✅ Check the event's regional eligibility (some events are Nigeria-only). |
+| |
+| ✅ For the Dynasty Cup (Nigerian teams only): ensure you have registered on the YDPAY app and completed KYC. During registration, you will be asked to enter your YDPAY ID — make sure it is correct. After submitting, check the site regularly in case your registration is rejected; if it is, edit it to fix the details. Teams from other countries do NOT need YDPAY to participate. |
 | |
 | ✅ Check the registration deadline slots fill up fast. |
 ++
@@ -554,6 +556,11 @@ Current Active Events (March 2026)
 | Each country has its own bracket register for your country's cup. |
 | |
 | Go to https://africanfreefirecommunity.com/a/events to view and register for these events. |
+| |
+| ELIGIBILITY NOTES: |
+| • Discord linking is NOT required for registration — it is optional. |
+| • Nigerian teams must register on the YDPAY app, enter their YDPAY ID, complete KYC, and be verified to be eligible. |
+| • Teams from all other African countries do NOT need YDPAY — they are eligible without it. |
 ++
 
 Submitting Match Results
@@ -880,6 +887,20 @@ Sponsor Verification Process
 
 Teams and players can register for sponsored events. Sponsor IDs are assigned to each registrant and verified by admins (Confirm / Reject). Check your sponsor status from the Sponsor Dashboard.
 
+YDPAY App & Dynasty Cup Eligibility
+
+The YDPAY app is ONLY required for Nigerian teams participating in the Dynasty Cup. Nigerian teams must:
+1. Download and register on the YDPAY app
+2. Complete KYC (identity verification) within the YDPAY app
+3. During the Dynasty Cup registration process on the AFC website, enter your correct YDPAY ID (this is entered as part of the event registration form, NOT on your AFC profile)
+4. Submit the registration and wait for admin verification (Confirm / Reject)
+
+Important: Nigerian teams should regularly check the AFC website to see if their Dynasty Cup registration has been approved or rejected. If it is rejected (e.g. due to an incorrect YDPAY ID or incomplete KYC), they can edit their registration to correct the details and resubmit.
+
+Teams from outside Nigeria (e.g. South Africa, Ghana, Kenya, Tanzania, Ethiopia, Senegal, Madagascar, Mozambique, Cape Verde) do NOT need to download or register on the YDPAY app. They are eligible to play the Dynasty Cup without it.
+
+Discord account linking is NOT required for Dynasty Cup registration or eligibility for any team. The registration process no longer makes Discord linking compulsory.
+
 15. AFC Handbook & Community Rules
 
 The AFC Handbook is the official governing framework for all competitions on the platform. All players, teams, and participants are expected to know and follow these rules.
@@ -1051,6 +1072,21 @@ A: Yes Solo format tournaments allow individual entry. Check the event's Partici
 Q: I see an event but the Register button isn't visible. Why?
 
 A: This could mean: (1) registration is closed, (2) the event is full, (3) you don't meet eligibility criteria (e.g. regional restrictions), or (4) it's a private/invite-only event.
+
+Q: Why can't my team register for a specific country's tournament even though some of our members are from that country?
+
+A: Country-locked tournaments only allow teams whose assigned country matches the event's country. A team's country is determined by the location of its members using the following rules:
+
+1. MAJORITY WINS — The country where most members are located becomes the team's country.
+   Example: 6-player team with 3 in Nigeria, 2 in South Africa, 1 in Kenya → Nigerian team.
+
+2. TIE — If two countries are tied for the most members, the team's country is determined by where the team owner/captain is located.
+   Example: 6-player team with 3 in Nigeria, 3 in South Africa → the team's country is wherever the team owner/captain lives.
+
+3. MULTI-WAY TIE / NO MAJORITY — If no single country has a clear majority, the team owner/captain's location decides.
+   Example: 5-player team with 2 in Nigeria, 2 in South Africa, team leader in Kenya → Kenyan team.
+
+If your team is assigned to the wrong country or you believe your country classification is incorrect, contact an AFC admin on Discord at discord.gg/afc.
 
 Leaderboards & Rankings
 
