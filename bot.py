@@ -129,6 +129,11 @@ bot = discord.Client(intents=intents)
 # Structure: { "channel_id": { "messages": [...], "last_updated": <unix timestamp> } }
 history: dict[str, dict] = {}
 
+# Cached live event data — refreshed every EVENT_POLL_INTERVAL_SECS by event_poll_loop
+_cached_events: list[dict] = []
+# File to persist event statuses for tracking changes across restarts
+SEEN_EVENT_STATUSES_FILE = os.path.join(BASE_DIR, "seen_event_statuses.json")
+
 
 # ── Persistent history helpers ───────────────────────────────────────────────
 def load_history_from_disk():
@@ -473,21 +478,95 @@ async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
     return embed, ping
 
 
+def _load_event_statuses() -> dict:
+    """Load {event_id: status} mapping from disk."""
+    if os.path.exists(SEEN_EVENT_STATUSES_FILE):
+        try:
+            with open(SEEN_EVENT_STATUSES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_event_statuses(statuses: dict):
+    try:
+        with open(SEEN_EVENT_STATUSES_FILE, "w", encoding="utf-8") as f:
+            json.dump(statuses, f)
+    except Exception as e:
+        print(f"⚠️  Could not save event statuses: {e}")
+
+
+def _build_status_change_embed(event: dict, old_status: str, new_status: str) -> discord.Embed:
+    """Build an embed announcing a tournament/scrim status change."""
+    name      = event.get("event_name", "Unknown Event")
+    comp_type = event.get("competition_type", "tournament")
+    slug      = event.get("slug", "")
+    event_url = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
+
+    is_scrim = comp_type.lower() == "scrims"
+
+    # Choose icon and color based on new status
+    new_lower = new_status.lower()
+    if new_lower in ("live", "in_progress", "started", "ongoing"):
+        icon, color = "🟢", 0x00FF00
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} NOW LIVE: {name}"
+    elif new_lower in ("completed", "ended", "finished"):
+        icon, color = "🏁", 0x888888
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} ENDED: {name}"
+    elif new_lower in ("registration_closed", "closed"):
+        icon, color = "🔒", 0xFF8800
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} Registration Closed: {name}"
+    elif new_lower in ("cancelled", "canceled"):
+        icon, color = "❌", 0xFF0000
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} CANCELLED: {name}"
+    else:
+        icon, color = "🔄", 0x3498DB
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} Update: {name}"
+
+    description = f"{icon} Status changed: **{old_status}** → **{new_status}**"
+    if event_url:
+        description += f"\n\n🔗 **[View Event →]({event_url})**"
+
+    embed = discord.Embed(title=title, description=description, color=color, url=event_url or None)
+    banner = event.get("event_banner")
+    if banner:
+        embed.set_thumbnail(url=banner)
+    embed.set_footer(text="African Freefire Community  •  africanfreefirecommunity.com")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
 async def event_poll_loop():
-    """Background task — polls for new tournaments and scrims every EVENT_POLL_INTERVAL_SECS."""
+    """Background task — polls for new tournaments and scrims every EVENT_POLL_INTERVAL_SECS.
+    Also caches event data for the system prompt and tracks status changes."""
+    global _cached_events
     await bot.wait_until_ready()
 
     seen = load_seen_events()
+    event_statuses = _load_event_statuses()
+
     if not seen:
         events = await fetch_all_events()
+        _cached_events = events
         seen = {str(e["event_id"]) for e in events}
         save_seen_events(seen)
+        # Seed statuses on first boot so we don't spam status changes
+        for e in events:
+            eid = str(e["event_id"])
+            status = e.get("status", "")
+            if status:
+                event_statuses[eid] = status
+        _save_event_statuses(event_statuses)
         print(f"🎮  Event poll: seeded {len(seen)} existing event(s). Watching for new ones.")
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
         try:
             events = await fetch_all_events()
+            _cached_events = events  # Always refresh the cache for the system prompt
+
+            # ── Announce NEW events ──
             new_events = [e for e in events if str(e["event_id"]) not in seen]
 
             for event in reversed(new_events):
@@ -497,11 +576,13 @@ async def event_poll_loop():
                     ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
 
                     channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
-                    # For scrims, ping is the scrims role; for tournaments, tag @everyone
                     everyone_ping = "@everyone" if not is_scrim else ""
                     content = " ".join(filter(None, [everyone_ping, ping]))
                     await channel.send(content=content, embed=embed)
                     seen.add(str(event["event_id"]))
+                    # Seed the status so we don't also fire a status-change for new events
+                    eid = str(event["event_id"])
+                    event_statuses[eid] = event.get("status", "")
                     print(f"🎮  Announced event: {event.get('event_name')}")
                     await asyncio.sleep(2)
                 except Exception as e:
@@ -509,6 +590,33 @@ async def event_poll_loop():
 
             if new_events:
                 save_seen_events(seen)
+
+            # ── Detect STATUS CHANGES on existing events ──
+            statuses_changed = False
+            for event in events:
+                eid = str(event.get("event_id"))
+                new_status = event.get("status", "")
+                old_status = event_statuses.get(eid, "")
+
+                if not new_status or new_status == old_status:
+                    continue
+
+                # Status changed — announce it
+                statuses_changed = True
+                event_statuses[eid] = new_status
+                try:
+                    embed = _build_status_change_embed(event, old_status, new_status)
+                    is_scrim = event.get("competition_type", "").lower() == "scrims"
+                    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
+                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
+                    await channel.send(embed=embed)
+                    print(f"🔄  Event status change: {event.get('event_name')} → {old_status} → {new_status}")
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    print(f"⚠️  Failed to post status change for {event.get('event_name')}: {e}")
+
+            if statuses_changed:
+                _save_event_statuses(event_statuses)
 
         except Exception as e:
             print(f"⚠️  event_poll_loop error: {e}")
@@ -815,6 +923,39 @@ def load_staff_knowledge() -> str:
     return "\n\n".join(parts)
 
 
+def format_live_events() -> str:
+    """Format cached event data into a readable summary for the system prompt."""
+    if not _cached_events:
+        return ""
+
+    lines = ["=== LIVE EVENT DATA (auto-updated every 2 minutes from AFC API) ==="]
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines.append(f"Last refreshed: {now_str}\n")
+
+    for ev in _cached_events:
+        name       = ev.get("event_name", "Unknown")
+        comp_type  = ev.get("competition_type", "tournament")
+        status     = ev.get("status", "unknown")
+        start_date = ev.get("event_date", "TBD")
+        start_time = ev.get("event_time", "")
+        prizepool  = ev.get("prizepool", "")
+        max_slots  = ev.get("number_of_participants", "")
+        registered = ev.get("total_registered_competitors", 0)
+        slug       = ev.get("slug", "")
+        url        = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
+
+        entry = f"• {name} ({comp_type})"
+        if status:     entry += f" — Status: {status}"
+        if start_date: entry += f" — Date: {start_date}"
+        if start_time: entry += f" at {start_time}"
+        if prizepool:  entry += f" — Prize: {prizepool}"
+        if max_slots:  entry += f" — Slots: {registered}/{max_slots}"
+        if url:        entry += f"\n  Link: {url}"
+        lines.append(entry)
+
+    return "\n".join(lines)
+
+
 def has_staff_role(member: discord.Member) -> bool:
     """Return True if the member has any staff/knowledge-access role."""
     return any(role.id in STAFF_KNOWLEDGE_ROLES for role in member.roles)
@@ -822,6 +963,7 @@ def has_staff_role(member: discord.Member) -> bool:
 
 def build_system_prompt(is_staff: bool = False) -> str:
     knowledge = load_knowledge()
+    live_events = format_live_events()
     staff_knowledge = load_staff_knowledge() if is_staff else ""
     support_role_tags = " ".join([f"<@&{rid}>" for rid in SUPPORT_ROLES])
 
@@ -876,9 +1018,12 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 - Never take sides in disputes between players or teams
 - If someone is angry — calm, acknowledge, then help
 - Never end responses with follow-up offers like "let me know if you need anything else", "feel free to ask", "hope that helps", "is there anything else I can help with" — just answer and stop
-- The Transfer Window is currently OPEN (March 2026)
-- Current active events: Dynasty Cup series launching April 1, 2026 across 10 African countries
-- Platform stats: 4,081+ users, 323 teams, 11 tournaments, $5,750 total prize pool
+- When someone asks about tournament times, dates, status, or registration — check the LIVE EVENT DATA section first, it is the most up-to-date source
+- If a tournament status is "pending", "upcoming", or "registration_open", tell the user it hasn't started yet and share the date/time if available
+- If a tournament status is "live" or "in_progress", tell the user it's currently running
+- If a tournament status is "completed" or "ended", tell the user it's finished
+
+{live_events}
 
 === AFC KNOWLEDGE BASE ===
 {knowledge}
@@ -2025,6 +2170,15 @@ async def on_ready():
 
     load_history_from_disk()
     purge_expired_history()
+
+    # Pre-fetch events so the bot has live data from the very first message
+    global _cached_events
+    try:
+        _cached_events = await fetch_all_events()
+        print(f"🎮  Pre-cached {len(_cached_events)} event(s) for live Q&A")
+    except Exception as e:
+        print(f"⚠️  Could not pre-cache events: {e}")
+
     bot.loop.create_task(auto_purge_loop())
     bot.loop.create_task(auto_scrape_loop())
     bot.loop.create_task(news_poll_loop())
@@ -2036,7 +2190,7 @@ async def on_ready():
     print(f"🕒  Conversation history: saved to disk, auto-clears after 24 hours")
     print(f"🔄  Auto-scrape: every {SCRAPE_INTERVAL_HOURS}h (first run in {SCRAPE_INTERVAL_HOURS}h)")
     print(f"📰  News poll: every {NEWS_POLL_INTERVAL_SECS}s → channel {NEWS_ANNOUNCEMENT_CHANNEL_ID}")
-    print(f"🎮  Event poll: every {EVENT_POLL_INTERVAL_SECS}s → tournament ch {TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID} / scrim ch {SCRIM_ANNOUNCEMENT_CHANNEL_ID}")
+    print(f"🎮  Event poll: every {EVENT_POLL_INTERVAL_SECS}s → tournament ch {TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID} / scrim ch {SCRIM_ANNOUNCEMENT_CHANNEL_ID} (+ status change tracking)")
     print(f"🔨  Ban poll: every {BAN_POLL_INTERVAL_SECS}s → ban ch {BAN_ANNOUNCEMENT_CHANNEL_ID} / unban ch {UNBAN_ANNOUNCEMENT_CHANNEL_ID}")
 
 
@@ -2061,24 +2215,34 @@ async def should_bot_respond(message_text: str, image_bytes: bytes = None, image
     system_prompt = (
         "You are a classifier for a Discord bot on an African Free Fire gaming support channel (AFC).\n"
         "Decide if the BOT should respond to this message.\n\n"
-        "The bot should ONLY respond when the message is clearly directed at the bot or the platform for help.\n\n"
+        "The bot should respond when the message is about AFC, tournaments, registration, teams, or the platform — "
+        "even if the person is not directly addressing the bot.\n\n"
         "Reply YES if the message:\n"
         "- Asks about how to use the AFC platform (register, join, create team, etc.)\n"
-        "- Describes a problem with their account, team, registration, or tournament\n"
+        "- Describes a problem with their account, team, registration, or tournament (even as a statement, e.g. 'my team is still pending', 'I registered but nothing happened')\n"
         "- Is asking about AFC rules, features, events, or how something works\n"
-        "- Is clearly seeking help or information from a bot/system\n"
-        "- Shares a screenshot of an AFC page, email, or app and asks a question about it\n\n"
+        "- Asks about tournament times, schedules, start/end dates, or event details (even without a question mark)\n"
+        "- Is clearly seeking help or information, even if phrased as a statement rather than a question\n"
+        "- Shares a screenshot of an AFC page, email, or app (with or without a question)\n"
+        "- Reports a bug, error, or unexpected behavior on the platform\n"
+        "- Expresses confusion or frustration about a platform feature or process\n\n"
         "Reply NO if the message is:\n"
         "- Casual chat, greetings, reactions, hype (e.g. 'lol', 'gg', 'nice', 'let's go', 'gm', 'fire bro')\n"
-        "- A question one PERSON is asking ANOTHER PERSON (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?', 'when did you join?')\n"
-        "- Someone gathering info from another user in a conversation\n"
-        "- A reply or follow-up that is clearly part of a user-to-user exchange\n"
-        "- A statement or comment that does not need a bot response\n"
+        "- A question one PERSON is asking ANOTHER PERSON about personal details (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?')\n"
+        "- Someone gathering personal info from another user in a conversation\n"
+        "- A reply or follow-up that is clearly part of a user-to-user exchange with no platform question\n"
+        "- Pure banter, jokes, or off-topic conversation with no AFC/platform relevance\n"
         "- A screenshot shared casually (meme, flex, celebration) with no question or help-seeking intent\n\n"
-        "IMPORTANT: A question like 'what is your team name?' or 'what is your username?' is directed at ANOTHER USER, not the bot — reply NO.\n"
-        "A question like 'how do I register my team?' or 'why is my team not showing?' is directed at the bot — reply YES.\n"
+        "IMPORTANT DISTINCTIONS:\n"
+        "- 'what is your team name?' → directed at ANOTHER USER → NO\n"
+        "- 'how do I register my team?' → platform question → YES\n"
+        "- 'which time are we going to start the tournament' → tournament question → YES\n"
+        "- 'I have registered my team but we are still on pending' → describes a platform problem → YES\n"
+        "- 'when is the next event' → event/schedule question → YES\n"
+        "- Messages do NOT need a question mark to be questions. Look at intent, not punctuation.\n"
+        "- Statements describing problems ('still pending', 'not working', 'can't join') are implicit help requests → YES\n\n"
         "If an image is provided, read it first — its content should inform your decision alongside the text.\n"
-        "When the message seems directed at another user rather than the bot, reply NO.\n"
+        "When in doubt, reply YES — it is better to respond unnecessarily than to ignore someone who needs help.\n"
         "Reply with only YES or NO."
     )
     try:
