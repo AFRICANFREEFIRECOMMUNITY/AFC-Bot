@@ -245,7 +245,7 @@ How to Edit Your Profile
 ++
 | 📌 Note |
 | |
-| Your Free Fire UID cannot be changed after registration contact an admin via Discord (discord.gg/afc) if you entered the wrong UID. |
+| Your Free Fire UID cannot be changed after registration contact an admin via Discord (https://discord.gg/qgKKZMu4sA) if you entered the wrong UID. |
 | |
 | Changing your email may require re-verification. |
 ++
@@ -278,7 +278,7 @@ Benefits of Linking Discord
 
  * Community recognition roles based on tournament performance
 
-Join the AFC Discord: discord.gg/afc ( https://discord.gg/afc )
+Join the AFC Discord: https://discord.gg/qgKKZMu4sA
 
 ++
 | 📌 Important |
@@ -764,7 +764,7 @@ Voting Stats (2025 Awards)
 | |
 | Voting for the NFCA 2026 awards will open at a future date. |
 | |
-| Watch the news page and AFC Discord for announcements: discord.gg/afc |
+| Watch the news page and AFC Discord for announcements: https://discord.gg/qgKKZMu4sA |
 | |
 | All registered AFC users will be eligible to vote. |
 ++
@@ -877,7 +877,7 @@ For Businesses Becoming a Sponsor
 
 Contact AFC admins via Discord to enquire about sponsorship opportunities:
 
-discord.gg/afc ( https://discord.gg/afc )
+https://discord.gg/qgKKZMu4sA
 
 Current Sponsors on the Platform
 
@@ -960,7 +960,7 @@ The handbook covers 20 major sections, searchable from the rules page:
 | |
 | AFC admins have final veto rights on all rule interpretations. |
 | |
-| For rule clarifications, contact AFC admins via Discord: discord.gg/afc |
+| For rule clarifications, contact AFC admins via Discord: https://discord.gg/qgKKZMu4sA |
 ++
 
 16. Quick Links Reference
@@ -998,7 +998,7 @@ Use these links to direct users to the exact pages they need:
 
  Terms of Service https://africanfreefirecommunity.com/terms-of-service
 
- AFC Discord Server discord.gg/afc ( https://discord.gg/afc )
+ AFC Discord Server https://discord.gg/qgKKZMu4sA
 
  AFC YouTube Channel youtube.com/@AFRICANFREEFIRECOMMUNITY1 ( https://youtube.com/@AFRICANFREEFIRECOMMUNITY1 )
 
@@ -1023,7 +1023,7 @@ A: Check your spam/junk folder. If it's not there, use the 'Resend Code' button 
 
 Q: I entered the wrong Free Fire UID when signing up. Can I change it?
 
-A: UIDs cannot be self-changed after registration. Contact an AFC admin on Discord at discord.gg/afc to request a correction.
+A: UIDs cannot be self-changed after registration. Contact an AFC admin on Discord at https://discord.gg/qgKKZMu4sA to request a correction.
 
 Q: Can I have multiple accounts?
 
@@ -1059,7 +1059,7 @@ A: Log in, find the event at https://africanfreefirecommunity.com/a/events, open
 
 Q: I registered but didn't get my Discord role. What should I do?
 
-A: First, make sure your Discord account is linked to your AFC profile (Settings → Connect Discord). If it's connected and the role is still missing, contact a moderator on Discord at discord.gg/afc admins have a tool to retry failed role assignments.
+A: First, make sure your Discord account is linked to your AFC profile (Settings → Connect Discord). If it's connected and the role is still missing, contact a moderator on Discord at https://discord.gg/qgKKZMu4sA admins have a tool to retry failed role assignments.
 
 Q: How do I get a room code / password for my match?
 
@@ -1086,7 +1086,7 @@ A: Country-locked tournaments only allow teams whose assigned country matches th
 3. MULTI-WAY TIE / NO MAJORITY — If no single country has a clear majority, the team owner/captain's location decides.
    Example: 5-player team with 2 in Nigeria, 2 in South Africa, team leader in Kenya → Kenyan team.
 
-If your team is assigned to the wrong country or you believe your country classification is incorrect, contact an AFC admin on Discord at discord.gg/afc.
+If your team is assigned to the wrong country or you believe your country classification is incorrect, contact an AFC admin on Discord at https://discord.gg/qgKKZMu4sA.
 
 Leaderboards & Rankings
 
@@ -1110,7 +1110,7 @@ A: You must be a registered and logged-in AFC user. Go to https://africanfreefir
 
 Q: When is the next NFCA Awards?
 
-A: The 2025 NFCA Awards have concluded. The 2026 Awards will be announced on the news page and Discord. Follow AFC at discord.gg/afc for updates.
+A: The 2025 NFCA Awards have concluded. The 2026 Awards will be announced on the news page and Discord. Follow AFC at https://discord.gg/qgKKZMu4sA for updates.
 
 Shop
 
@@ -1126,15 +1126,15 @@ Discord & Community
 
 Q: How do I join the AFC Discord?
 
-A: Click this link: discord.gg/afc or search 'African Freefire Community' on Discord.
+A: Click this link: https://discord.gg/qgKKZMu4sA or search 'African Freefire Community' on Discord.
 
 Q: I was banned or suspended. What can I do?
 
-A: Contact AFC admins via Discord at discord.gg/afc to appeal your ban/suspension. Provide your username and the reason you believe the action was unjust.
+A: Contact AFC admins via Discord at https://discord.gg/qgKKZMu4sA to appeal your ban/suspension. Provide your username and the reason you believe the action was unjust.
 
 Q: I want to report a cheater / rule violation. Where do I report?
 
-A: Report via the AFC Discord at discord.gg/afc. Contact a moderator or admin with your evidence (video, screenshots).
+A: Report via the AFC Discord at https://discord.gg/qgKKZMu4sA. Contact a moderator or admin with your evidence (video, screenshots).
 
 General
 
@@ -1148,7 +1148,7 @@ A: AFC is open to all African countries. Some events have regional restrictions 
 
 Q: How do I contact AFC support?
 
-A: The fastest way is via the AFC Discord server at discord.gg/afc. You can also use the 'Contact Us' option on the website.
+A: The fastest way is via the AFC Discord server at https://discord.gg/qgKKZMu4sA. You can also use the 'Contact Us' option on the website.
 
 © 2026 African Freefire Community. Powered by AFC Gaming.
 

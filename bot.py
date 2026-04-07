@@ -92,6 +92,10 @@ UNBAN_ANNOUNCEMENT_CHANNEL_ID = 1353759565543637062
 # AFC backend API base
 AFC_API_BASE = "https://api.africanfreefirecommunity.com"
 
+# Canonical AFC Discord invite — the ONLY Discord link the bot is allowed to share.
+# Hardcoded so GPT can never hallucinate a wrong invite (e.g. "discord.gg/afc").
+AFC_DISCORD_INVITE = "https://discord.gg/qgKKZMu4sA"
+
 # Always use the folder where bot.py lives — avoids permission errors on Windows
 BASE_DIR              = os.path.dirname(os.path.abspath(__file__))
 KNOWLEDGE_DIR         = os.path.join(BASE_DIR, "knowledge")
@@ -1203,6 +1207,14 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 - Never take sides in disputes between players or teams
 - If someone is angry — calm, acknowledge, then help
 - Never end responses with follow-up offers like "let me know if you need anything else", "feel free to ask", "hope that helps", "is there anything else I can help with" — just answer and stop
+
+=== DISCORD LINK RULE — CRITICAL, NEVER VIOLATE ===
+- The ONLY valid AFC Discord invite is: {AFC_DISCORD_INVITE}
+- NEVER write "discord.gg/afc", "discord.gg/african-freefire-community", or ANY other Discord URL
+- NEVER make up, guess, shorten, or invent a Discord invite — even if the knowledge base shows an old one
+- When you mention the AFC Discord, write the link exactly as: {AFC_DISCORD_INVITE}
+- If a user asks how to contact AFC admins on Discord, give them this exact link and nothing else
+- Do NOT use markdown link aliases like [AFC Discord](other-url) — write the raw URL above
 - When someone asks about tournament times, dates, status, or registration — check the LIVE EVENT DATA section first, it is the most up-to-date source
 - LIVE EVENT DATA shows BOTH the website status AND a time-derived status. Trust the time-derived status when the website is clearly out of date (e.g. website still says "pending" but the start time was hours ago — tell the user the event should be live or has likely ended)
 - If a tournament status is "pending", "upcoming", or "registration_open" AND the time-derived status is "upcoming" or "starting_soon", tell the user it hasn't started yet and share the date/time
@@ -1413,6 +1425,12 @@ If the admin says "exact", "dont remove", "do not remove", "use exactly", "keep 
 - If admin mentions @here → tag_here: true
 - Output ONLY valid JSON. No markdown fences. No extra text.
 
+=== DISCORD LINK RULE — CRITICAL, NEVER VIOLATE ===
+- The ONLY valid AFC Discord invite is: {AFC_DISCORD_INVITE}
+- NEVER write "discord.gg/afc" or any other Discord URL — even if the knowledge base shows an old one
+- NEVER make up, guess, or shorten a Discord invite
+- When the announcement mentions the Discord, use exactly: {AFC_DISCORD_INVITE}
+
 === OUTPUT FORMAT (strict JSON) ===
 {{
   "title": "Short title (max 8 words) — use exact title if admin provides one",
@@ -1571,7 +1589,7 @@ async def send_support_redirect(message: discord.Message):
             f"**Here's what you can do:**\n"
             f"1. Head over to <#{SUPPORT_CHANNEL_ID}> and create a support ticket\n"
             f"2. Or reach out directly via email: **info@africanfreefirecommunity.com**\n"
-            f"3. Or join the AFC Discord: **discord.gg/afc**\n\n"
+            f"3. Or join the AFC Discord: **{AFC_DISCORD_INVITE}**\n\n"
             f"Our support team has been notified 👇"
         ),
         color=0x00A550
