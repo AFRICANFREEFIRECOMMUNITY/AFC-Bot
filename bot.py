@@ -537,6 +537,62 @@ def _build_status_change_embed(event: dict, old_status: str, new_status: str) ->
     return embed
 
 
+def _load_time_status_announced() -> dict:
+    """Load {event_id: time_status} that we've already announced."""
+    path = os.path.join(BASE_DIR, "seen_time_statuses.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_time_status_announced(data: dict):
+    path = os.path.join(BASE_DIR, "seen_time_statuses.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"⚠️  Could not save seen_time_statuses.json: {e}")
+
+
+def _build_time_status_embed(event: dict, time_status: str, time_note: str) -> discord.Embed:
+    """Build an embed for a time-derived status transition."""
+    name      = event.get("event_name", "Unknown Event")
+    comp_type = event.get("competition_type", "tournament")
+    slug      = event.get("slug", "")
+    event_url = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
+    is_scrim  = comp_type.lower() == "scrims"
+
+    if time_status == "in_progress":
+        icon, color = "🟢", 0x00FF00
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} should be LIVE: {name}"
+        desc  = f"{icon} **{name}** {time_note}"
+    elif time_status == "likely_ended":
+        icon, color = "🏁", 0x888888
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} likely ENDED: {name}"
+        desc  = f"{icon} **{name}** {time_note}"
+    elif time_status == "starting_soon":
+        icon, color = "⏰", 0xFFD700
+        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} starting soon: {name}"
+        desc  = f"{icon} **{name}** {time_note}"
+    else:
+        return None
+
+    if event_url:
+        desc += f"\n\n🔗 **[View Event →]({event_url})**"
+
+    embed = discord.Embed(title=title, description=desc, color=color, url=event_url or None)
+    banner = event.get("event_banner")
+    if banner:
+        embed.set_thumbnail(url=banner)
+    embed.set_footer(text="African Freefire Community  •  Auto-detected from event schedule")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
 async def event_poll_loop():
     """Background task — polls for new tournaments and scrims every EVENT_POLL_INTERVAL_SECS.
     Also caches event data for the system prompt and tracks status changes."""
@@ -545,6 +601,7 @@ async def event_poll_loop():
 
     seen = load_seen_events()
     event_statuses = _load_event_statuses()
+    time_statuses_announced = _load_time_status_announced()
 
     if not seen:
         events = await fetch_all_events()
@@ -617,6 +674,49 @@ async def event_poll_loop():
 
             if statuses_changed:
                 _save_event_statuses(event_statuses)
+
+            # ── TIME-DERIVED status announcements ──
+            # If the website still says 'pending' / 'upcoming' but the start
+            # time has clearly passed, announce a derived "live now" / "ended"
+            # update so users in Discord aren't left guessing.
+            time_announced_changed = False
+            for event in events:
+                eid = str(event.get("event_id"))
+                website_status = (event.get("status") or "").lower()
+                # Skip events the website already marked as ended/cancelled
+                if website_status in ("completed", "ended", "finished", "cancelled", "canceled"):
+                    continue
+
+                time_status, time_note = compute_time_status(event)
+                if time_status in ("unknown", "upcoming"):
+                    continue
+                # Only announce in_progress/likely_ended/starting_soon transitions
+                already = time_statuses_announced.get(eid)
+                if already == time_status:
+                    continue
+                # If the website already says live and we'd announce live, skip.
+                if time_status == "in_progress" and website_status in ("live", "in_progress", "started", "ongoing"):
+                    time_statuses_announced[eid] = time_status
+                    time_announced_changed = True
+                    continue
+
+                embed = _build_time_status_embed(event, time_status, time_note)
+                if embed is None:
+                    continue
+                try:
+                    is_scrim = event.get("competition_type", "").lower() == "scrims"
+                    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
+                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
+                    await channel.send(embed=embed)
+                    time_statuses_announced[eid] = time_status
+                    time_announced_changed = True
+                    print(f"⏱️  Time-derived status: {event.get('event_name')} → {time_status}")
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    print(f"⚠️  Failed to post time-derived status for {event.get('event_name')}: {e}")
+
+            if time_announced_changed:
+                _save_time_status_announced(time_statuses_announced)
 
         except Exception as e:
             print(f"⚠️  event_poll_loop error: {e}")
@@ -923,6 +1023,71 @@ def load_staff_knowledge() -> str:
     return "\n\n".join(parts)
 
 
+def _parse_event_datetime(date_str: str, time_str: str) -> datetime | None:
+    """Best-effort parse of an event's start datetime as UTC.
+
+    The backend returns date in formats like '2026-04-08' or '08/04/2026',
+    and time as 'HH:MM' or 'HH:MM:SS'. Returns None if it can't be parsed."""
+    if not date_str or date_str == "TBD":
+        return None
+    date_str = str(date_str).strip()
+    time_str = str(time_str or "").strip() or "00:00"
+
+    date_formats = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"]
+    time_formats = ["%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M%p"]
+
+    for df in date_formats:
+        for tf in time_formats:
+            try:
+                dt = datetime.strptime(f"{date_str} {time_str}", f"{df} {tf}")
+                return dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    # Try date only
+    for df in date_formats:
+        try:
+            dt = datetime.strptime(date_str, df)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def compute_time_status(event: dict) -> tuple[str, str]:
+    """Derive a human-readable status from current time vs event date/time.
+
+    Returns (status_keyword, human_explanation).
+    status_keyword is one of: 'upcoming', 'starting_soon', 'in_progress',
+    'likely_ended', 'unknown'.
+    """
+    start_dt = _parse_event_datetime(event.get("event_date", ""), event.get("event_time", ""))
+    if not start_dt:
+        return "unknown", ""
+
+    now = datetime.now(timezone.utc)
+    delta = (start_dt - now).total_seconds()
+
+    # Treat events as running for ~6 hours after their start time unless the
+    # backend says otherwise. This is a soft heuristic — the website remains
+    # the source of truth, but it lets the bot answer "is it live?" sensibly.
+    runtime_secs = 6 * 3600
+    end_dt = start_dt.timestamp() + runtime_secs
+
+    if delta > 24 * 3600:
+        days = int(delta // 86400)
+        return "upcoming", f"starts in ~{days} day(s) ({start_dt.strftime('%Y-%m-%d %H:%M UTC')})"
+    if delta > 3600:
+        hrs = int(delta // 3600)
+        return "upcoming", f"starts in ~{hrs} hour(s) ({start_dt.strftime('%H:%M UTC')})"
+    if delta > 0:
+        mins = max(1, int(delta // 60))
+        return "starting_soon", f"starts in ~{mins} minute(s)"
+    if now.timestamp() <= end_dt:
+        mins_in = int((-delta) // 60)
+        return "in_progress", f"started ~{mins_in} minute(s) ago — should be live now"
+    return "likely_ended", f"start time was {start_dt.strftime('%Y-%m-%d %H:%M UTC')} — likely ended"
+
+
 def format_live_events() -> str:
     """Format cached event data into a readable summary for the system prompt."""
     if not _cached_events:
@@ -930,7 +1095,8 @@ def format_live_events() -> str:
 
     lines = ["=== LIVE EVENT DATA (auto-updated every 2 minutes from AFC API) ==="]
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    lines.append(f"Last refreshed: {now_str}\n")
+    lines.append(f"Current time: {now_str}")
+    lines.append("Use the TIME-DERIVED status if it disagrees with the website status — the website is sometimes slow to update.\n")
 
     for ev in _cached_events:
         name       = ev.get("event_name", "Unknown")
@@ -944,13 +1110,19 @@ def format_live_events() -> str:
         slug       = ev.get("slug", "")
         url        = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
 
+        time_status, time_note = compute_time_status(ev)
+
         entry = f"• {name} ({comp_type})"
-        if status:     entry += f" — Status: {status}"
-        if start_date: entry += f" — Date: {start_date}"
-        if start_time: entry += f" at {start_time}"
-        if prizepool:  entry += f" — Prize: {prizepool}"
-        if max_slots:  entry += f" — Slots: {registered}/{max_slots}"
-        if url:        entry += f"\n  Link: {url}"
+        if status:       entry += f" — Website status: {status}"
+        if time_status and time_status != "unknown":
+            entry += f" — Time-derived status: {time_status}"
+            if time_note:
+                entry += f" ({time_note})"
+        if start_date:   entry += f" — Date: {start_date}"
+        if start_time:   entry += f" at {start_time}"
+        if prizepool:    entry += f" — Prize: {prizepool}"
+        if max_slots:    entry += f" — Slots: {registered}/{max_slots}"
+        if url:          entry += f"\n  Link: {url}"
         lines.append(entry)
 
     return "\n".join(lines)
@@ -999,6 +1171,19 @@ You are smart, warm, and professional — like a knowledgeable friend who genuin
 5. Always include the most relevant link at the end of your answer
 6. If someone asks about something that "coming soon" or in development — say so honestly
 
+=== HANDLING VAGUE OR UNCLEAR MESSAGES ===
+When a message is vague, ambiguous, or missing key details — DO NOT ignore it and DO NOT guess.
+Instead, ask a short, friendly clarifying question to understand what they need. Examples:
+
+- "Guys how to register to tournament" → Ask which tournament they mean (or if there's only one active, answer directly). E.g. "Hey! Which tournament are you looking to register for? 🎮" then give the steps once they reply.
+- "Can someone add me" / "Can someone had me" → They might mean: add to a team, add to the platform, add to a tournament. Ask: "Hey welcome! Add you to what exactly — a team, a tournament, or the AFC platform? Let me know and I'll walk you through it 🙌"
+- "Hi guys new here" → Welcome them warmly and offer guidance: "Welcome to AFC! 🔥 Are you looking to register on the platform, join a team, or get into a tournament? Let me know what you need!"
+- "How do I join" → Ask: join what? A team? A tournament? The AFC platform?
+- "Help me" / "I need help" → Ask what specifically they need help with
+
+The goal is to NEVER leave someone hanging. If you can't figure out what they need from the message alone, ask — don't stay silent.
+Keep clarifying questions short (1-2 sentences max) and warm.
+
 === WHEN TO ESCALATE TO SUPPORT ===
 ONLY escalate (add ---SUPPORT_REDIRECT--- at the end) for genuine issues needing a human:
 - Account banned, suspended, or locked
@@ -1019,9 +1204,12 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 - If someone is angry — calm, acknowledge, then help
 - Never end responses with follow-up offers like "let me know if you need anything else", "feel free to ask", "hope that helps", "is there anything else I can help with" — just answer and stop
 - When someone asks about tournament times, dates, status, or registration — check the LIVE EVENT DATA section first, it is the most up-to-date source
-- If a tournament status is "pending", "upcoming", or "registration_open", tell the user it hasn't started yet and share the date/time if available
-- If a tournament status is "live" or "in_progress", tell the user it's currently running
-- If a tournament status is "completed" or "ended", tell the user it's finished
+- LIVE EVENT DATA shows BOTH the website status AND a time-derived status. Trust the time-derived status when the website is clearly out of date (e.g. website still says "pending" but the start time was hours ago — tell the user the event should be live or has likely ended)
+- If a tournament status is "pending", "upcoming", or "registration_open" AND the time-derived status is "upcoming" or "starting_soon", tell the user it hasn't started yet and share the date/time
+- If the time-derived status is "in_progress" (or website says "live"/"in_progress"), tell the user the event should be running right now
+- If the time-derived status is "likely_ended" (or website says "completed"/"ended"), tell the user it has finished
+- When answering "what time" / "when does it start" questions, give the EXACT date and time from the LIVE EVENT DATA — never make one up. If no time is set, say so honestly.
+- If someone asks about the status of THEIR registration (e.g. "still pending"), do NOT tell them how to check on the platform from scratch — acknowledge the issue, explain that pending teams are reviewed by admins, and escalate to support so a human can verify their entry.
 
 {live_events}
 
@@ -2205,6 +2393,43 @@ async def on_message(message: discord.Message):
         print(f"⚠️  Unhandled error in on_message: {e}")
 
 
+# Tracks which user-message IDs the bot has already replied to (or already
+# decided NOT to reply to) so an edit can re-trigger evaluation safely.
+_handled_message_ids: set[int] = set()
+_HANDLED_MAX = 2000
+
+
+def _mark_handled(message_id: int):
+    _handled_message_ids.add(message_id)
+    if len(_handled_message_ids) > _HANDLED_MAX:
+        # Drop the oldest ~25% to keep the set bounded
+        for mid in list(_handled_message_ids)[: _HANDLED_MAX // 4]:
+            _handled_message_ids.discard(mid)
+
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    """When a user edits a message, re-evaluate it.
+
+    Real users sometimes type a vague message ('okay'), then edit it into a
+    real question ('which time are we going to start the tournament').
+    Without this handler the bot would never see the new content.
+    """
+    if after.author.bot:
+        return
+    if before.content == after.content and not after.attachments:
+        return
+    # Skip if we already replied directly to this message id (avoid duplicate
+    # replies on every edit). The classifier path will still re-evaluate
+    # because that flow does not call _mark_handled.
+    if after.id in _handled_message_ids:
+        return
+    try:
+        await _handle_message(after)
+    except Exception as e:
+        print(f"⚠️  Unhandled error in on_message_edit: {e}")
+
+
 async def should_bot_respond(message_text: str, image_bytes: bytes = None, image_media_type: str = None) -> bool:
     """
     Use GPT to quickly decide if a message is worth the bot responding to.
@@ -2216,33 +2441,44 @@ async def should_bot_respond(message_text: str, image_bytes: bytes = None, image
         "You are a classifier for a Discord bot on an African Free Fire gaming support channel (AFC).\n"
         "Decide if the BOT should respond to this message.\n\n"
         "The bot should respond when the message is about AFC, tournaments, registration, teams, or the platform — "
-        "even if the person is not directly addressing the bot.\n\n"
+        "even if the person is not directly addressing the bot, even if it is a Discord reply to another user, "
+        "and even if there is no question mark.\n\n"
         "Reply YES if the message:\n"
         "- Asks about how to use the AFC platform (register, join, create team, etc.)\n"
         "- Describes a problem with their account, team, registration, or tournament (even as a statement, e.g. 'my team is still pending', 'I registered but nothing happened')\n"
         "- Is asking about AFC rules, features, events, or how something works\n"
-        "- Asks about tournament times, schedules, start/end dates, or event details (even without a question mark)\n"
+        "- Asks about tournament times, schedules, start/end dates, or event details (even without a question mark, even one or two words like 'when start?', 'time?', 'tournament time')\n"
         "- Is clearly seeking help or information, even if phrased as a statement rather than a question\n"
         "- Shares a screenshot of an AFC page, email, or app (with or without a question)\n"
         "- Reports a bug, error, or unexpected behavior on the platform\n"
-        "- Expresses confusion or frustration about a platform feature or process\n\n"
-        "Reply NO if the message is:\n"
-        "- Casual chat, greetings, reactions, hype (e.g. 'lol', 'gg', 'nice', 'let's go', 'gm', 'fire bro')\n"
-        "- A question one PERSON is asking ANOTHER PERSON about personal details (e.g. 'what is your team name?', 'what is your username?', 'have you registered?', 'which server are you on?')\n"
-        "- Someone gathering personal info from another user in a conversation\n"
-        "- A reply or follow-up that is clearly part of a user-to-user exchange with no platform question\n"
+        "- Expresses confusion or frustration about a platform feature or process\n"
+        "- Is a new member introducing themselves or asking to be added/included (e.g. 'I'm new here', 'can someone add me', 'how do I join')\n"
+        "- Is a vague or unclear request that COULD be about the platform (e.g. 'can someone help me', 'add me pls', 'how to register') — the bot can ask for clarification\n"
+        "- Contains typos or informal language but the INTENT is asking for help (e.g. 'had me' meaning 'add me', 'tornument' meaning 'tournament')\n"
+        "- Is a Discord reply to another user but the message itself is a platform question, problem report, or status update about a team/tournament/registration\n\n"
+        "Reply NO ONLY if the message is:\n"
+        "- Pure casual chat, greetings, reactions, hype with NO AFC content (e.g. 'lol', 'gg', 'nice', 'gm', 'fire bro', 'okay', 'cool')\n"
+        "- A question one PERSON is asking ANOTHER SPECIFIC PERSON by name or @mention about purely personal details unrelated to the platform (e.g. '@John what is your in-game name?')\n"
         "- Pure banter, jokes, or off-topic conversation with no AFC/platform relevance\n"
         "- A screenshot shared casually (meme, flex, celebration) with no question or help-seeking intent\n\n"
         "IMPORTANT DISTINCTIONS:\n"
-        "- 'what is your team name?' → directed at ANOTHER USER → NO\n"
+        "- '@John what is your team name?' → directed at A SPECIFIC USER by name → NO\n"
+        "- 'what is your team name?' with no specific target → could be asking the community → YES\n"
         "- 'how do I register my team?' → platform question → YES\n"
-        "- 'which time are we going to start the tournament' → tournament question → YES\n"
+        "- 'Guys how to register to tournament' → asking the community for help → YES\n"
+        "- 'Can someone add me' / 'Can someone had me' → new member seeking help (typos included) → YES\n"
+        "- 'I'm new here' / 'Hi guys new here' → new member who likely needs guidance → YES\n"
+        "- 'which time are we going to start the tournament' → tournament question → YES (no question mark needed)\n"
+        "- 'Which time are we going to start the tournament' (as a reply to anyone) → still a tournament question → YES\n"
         "- 'I have registered my team but we are still on pending' → describes a platform problem → YES\n"
         "- 'when is the next event' → event/schedule question → YES\n"
+        "- 'has the tournament started yet' / 'is it live' / 'tournament time?' → tournament status question → YES\n"
         "- Messages do NOT need a question mark to be questions. Look at intent, not punctuation.\n"
-        "- Statements describing problems ('still pending', 'not working', 'can't join') are implicit help requests → YES\n\n"
+        "- Statements describing problems ('still pending', 'not working', 'can't join') are implicit help requests → YES\n"
+        "- Messages with typos or broken English should still be understood by INTENT, not spelling → YES if help-seeking\n"
+        "- Reply context (the [This is a reply to ...] line) is FYI only — it does NOT make the message ineligible. Judge the message itself.\n\n"
         "If an image is provided, read it first — its content should inform your decision alongside the text.\n"
-        "When in doubt, reply YES — it is better to respond unnecessarily than to ignore someone who needs help.\n"
+        "When in doubt, reply YES — it is FAR better to respond unnecessarily than to ignore someone who needs help.\n"
         "Reply with only YES or NO."
     )
     try:
@@ -2295,31 +2531,35 @@ async def _handle_message(message: discord.Message):
             return
 
     is_mentioned = bot.user in message.mentions
-    is_auto_reply_channel = message.channel.id in AUTO_REPLY_CHANNELS
 
-    # Respond if: @mentioned anywhere in allowed channels, OR in auto-reply channels
-    if not is_mentioned and not is_auto_reply_channel:
-        return
-
-    # In auto-reply channels (no @mention), use AI to decide if this needs a response
-    if is_auto_reply_channel and not is_mentioned:
+    # Auto-reply runs in EVERY allowed channel — the classifier decides whether
+    # the message actually needs a bot response. This way no question gets ignored
+    # just because it lives in a channel that wasn't explicitly listed.
+    if not is_mentioned:
         content = message.content.strip()
 
         # Quick filter — skip very short messages and pure emoji reactions
-        if len(content) < 8 and not message.attachments:
+        if len(content) < 4 and not message.attachments:
             return
-        if re.match(r'^[\U00010000-\U0010ffff\U00002000-\U00002BFF\s]+$', content):
+        if content and re.match(r'^[\U00010000-\U0010ffff\U00002000-\U00002BFF\s]+$', content):
             return
 
-        # If this message is a Discord reply to another human (not the bot), skip it —
-        # it's a user-to-user conversation, not a request for bot help.
+        # If this message is a Discord reply, fetch the parent so the classifier
+        # can use it as context. We DO NOT silently skip replies anymore — many
+        # real questions ("we are still on pending", "which time are we going to
+        # start the tournament") arrive as replies to other users.
+        reply_context_text = ""
         if message.reference is not None:
             ref = message.reference.resolved
-            if ref is None:
-                # Reference not cached — play it safe and skip (likely user-to-user)
-                return
-            if isinstance(ref, discord.Message) and ref.author != bot.user:
-                return
+            if ref is None and message.reference.message_id:
+                try:
+                    ref = await message.channel.fetch_message(message.reference.message_id)
+                except Exception:
+                    ref = None
+            if isinstance(ref, discord.Message):
+                ref_author = "the bot" if ref.author == bot.user else ref.author.display_name
+                ref_snippet = (ref.content or "")[:200]
+                reply_context_text = f"[This is a reply to {ref_author}: \"{ref_snippet}\"]\n"
 
         # If there's an image, download it so the classifier can read it
         # alongside the text before deciding whether to respond.
@@ -2342,7 +2582,8 @@ async def _handle_message(message: discord.Message):
                 pass  # if download fails, classify on text alone
 
         # Ask GPT (with image if present) whether this message needs a response
-        should_respond = await should_bot_respond(content, classifier_image_bytes, classifier_media_type)
+        classifier_text = (reply_context_text + content) if reply_context_text else content
+        should_respond = await should_bot_respond(classifier_text, classifier_image_bytes, classifier_media_type)
         if not should_respond:
             return
 
