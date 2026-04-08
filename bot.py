@@ -541,62 +541,6 @@ def _build_status_change_embed(event: dict, old_status: str, new_status: str) ->
     return embed
 
 
-def _load_time_status_announced() -> dict:
-    """Load {event_id: time_status} that we've already announced."""
-    path = os.path.join(BASE_DIR, "seen_time_statuses.json")
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def _save_time_status_announced(data: dict):
-    path = os.path.join(BASE_DIR, "seen_time_statuses.json")
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    except Exception as e:
-        print(f"⚠️  Could not save seen_time_statuses.json: {e}")
-
-
-def _build_time_status_embed(event: dict, time_status: str, time_note: str) -> discord.Embed:
-    """Build an embed for a time-derived status transition."""
-    name      = event.get("event_name", "Unknown Event")
-    comp_type = event.get("competition_type", "tournament")
-    slug      = event.get("slug", "")
-    event_url = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
-    is_scrim  = comp_type.lower() == "scrims"
-
-    if time_status == "in_progress":
-        icon, color = "🟢", 0x00FF00
-        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} should be LIVE: {name}"
-        desc  = f"{icon} **{name}** {time_note}"
-    elif time_status == "likely_ended":
-        icon, color = "🏁", 0x888888
-        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} likely ENDED: {name}"
-        desc  = f"{icon} **{name}** {time_note}"
-    elif time_status == "starting_soon":
-        icon, color = "⏰", 0xFFD700
-        title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} starting soon: {name}"
-        desc  = f"{icon} **{name}** {time_note}"
-    else:
-        return None
-
-    if event_url:
-        desc += f"\n\n🔗 **[View Event →]({event_url})**"
-
-    embed = discord.Embed(title=title, description=desc, color=color, url=event_url or None)
-    banner = event.get("event_banner")
-    if banner:
-        embed.set_thumbnail(url=banner)
-    embed.set_footer(text="African Freefire Community  •  Auto-detected from event schedule")
-    embed.timestamp = datetime.now(timezone.utc)
-    return embed
-
-
 async def event_poll_loop():
     """Background task — polls for new tournaments and scrims every EVENT_POLL_INTERVAL_SECS.
     Also caches event data for the system prompt and tracks status changes."""
@@ -605,7 +549,6 @@ async def event_poll_loop():
 
     seen = load_seen_events()
     event_statuses = _load_event_statuses()
-    time_statuses_announced = _load_time_status_announced()
 
     if not seen:
         events = await fetch_all_events()
@@ -678,49 +621,6 @@ async def event_poll_loop():
 
             if statuses_changed:
                 _save_event_statuses(event_statuses)
-
-            # ── TIME-DERIVED status announcements ──
-            # If the website still says 'pending' / 'upcoming' but the start
-            # time has clearly passed, announce a derived "live now" / "ended"
-            # update so users in Discord aren't left guessing.
-            time_announced_changed = False
-            for event in events:
-                eid = str(event.get("event_id"))
-                website_status = (event.get("status") or "").lower()
-                # Skip events the website already marked as ended/cancelled
-                if website_status in ("completed", "ended", "finished", "cancelled", "canceled"):
-                    continue
-
-                time_status, time_note = compute_time_status(event)
-                if time_status in ("unknown", "upcoming"):
-                    continue
-                # Only announce in_progress/likely_ended/starting_soon transitions
-                already = time_statuses_announced.get(eid)
-                if already == time_status:
-                    continue
-                # If the website already says live and we'd announce live, skip.
-                if time_status == "in_progress" and website_status in ("live", "in_progress", "started", "ongoing"):
-                    time_statuses_announced[eid] = time_status
-                    time_announced_changed = True
-                    continue
-
-                embed = _build_time_status_embed(event, time_status, time_note)
-                if embed is None:
-                    continue
-                try:
-                    is_scrim = event.get("competition_type", "").lower() == "scrims"
-                    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
-                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
-                    await channel.send(embed=embed)
-                    time_statuses_announced[eid] = time_status
-                    time_announced_changed = True
-                    print(f"⏱️  Time-derived status: {event.get('event_name')} → {time_status}")
-                    await asyncio.sleep(2)
-                except Exception as e:
-                    print(f"⚠️  Failed to post time-derived status for {event.get('event_name')}: {e}")
-
-            if time_announced_changed:
-                _save_time_status_announced(time_statuses_announced)
 
         except Exception as e:
             print(f"⚠️  event_poll_loop error: {e}")
@@ -1058,11 +958,16 @@ def _parse_event_datetime(date_str: str, time_str: str) -> datetime | None:
 
 
 def compute_time_status(event: dict) -> tuple[str, str]:
-    """Derive a human-readable status from current time vs event date/time.
+    """Describe the event's scheduled date relative to now.
+
+    The AFC API's `event_date`/`event_time` field is NOT a guaranteed match-start
+    timestamp — it can represent the registration deadline or just the event's
+    listed date. Because of that, this function NEVER asserts that an event is
+    live or has ended based on time alone. The only authoritative source of
+    live/ended state is `event['status']` from the backend.
 
     Returns (status_keyword, human_explanation).
-    status_keyword is one of: 'upcoming', 'starting_soon', 'in_progress',
-    'likely_ended', 'unknown'.
+    status_keyword is one of: 'upcoming', 'starting_soon', 'date_passed', 'unknown'.
     """
     start_dt = _parse_event_datetime(event.get("event_date", ""), event.get("event_time", ""))
     if not start_dt:
@@ -1071,25 +976,16 @@ def compute_time_status(event: dict) -> tuple[str, str]:
     now = datetime.now(timezone.utc)
     delta = (start_dt - now).total_seconds()
 
-    # Treat events as running for ~6 hours after their start time unless the
-    # backend says otherwise. This is a soft heuristic — the website remains
-    # the source of truth, but it lets the bot answer "is it live?" sensibly.
-    runtime_secs = 6 * 3600
-    end_dt = start_dt.timestamp() + runtime_secs
-
     if delta > 24 * 3600:
         days = int(delta // 86400)
-        return "upcoming", f"starts in ~{days} day(s) ({start_dt.strftime('%Y-%m-%d %H:%M UTC')})"
+        return "upcoming", f"scheduled in ~{days} day(s) ({start_dt.strftime('%Y-%m-%d %H:%M UTC')})"
     if delta > 3600:
         hrs = int(delta // 3600)
-        return "upcoming", f"starts in ~{hrs} hour(s) ({start_dt.strftime('%H:%M UTC')})"
+        return "upcoming", f"scheduled in ~{hrs} hour(s) ({start_dt.strftime('%H:%M UTC')})"
     if delta > 0:
         mins = max(1, int(delta // 60))
-        return "starting_soon", f"starts in ~{mins} minute(s)"
-    if now.timestamp() <= end_dt:
-        mins_in = int((-delta) // 60)
-        return "in_progress", f"started ~{mins_in} minute(s) ago — should be live now"
-    return "likely_ended", f"start time was {start_dt.strftime('%Y-%m-%d %H:%M UTC')} — likely ended"
+        return "starting_soon", f"scheduled in ~{mins} minute(s)"
+    return "date_passed", f"listed date {start_dt.strftime('%Y-%m-%d %H:%M UTC')} has passed — check website status for whether the event is live, ended, or still running"
 
 
 def format_live_events() -> str:
@@ -1100,7 +996,10 @@ def format_live_events() -> str:
     lines = ["=== LIVE EVENT DATA (auto-updated every 2 minutes from AFC API) ==="]
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines.append(f"Current time: {now_str}")
-    lines.append("Use the TIME-DERIVED status if it disagrees with the website status — the website is sometimes slow to update.\n")
+    lines.append(
+        "The 'Website status' field is the ONLY authoritative source of whether an event is live, ended, or still in registration. "
+        "The listed Date/time is the event's scheduled date — it may be the registration deadline OR the match start, so do NOT use it on its own to claim a tournament has started or ended.\n"
+    )
 
     for ev in _cached_events:
         name       = ev.get("event_name", "Unknown")
@@ -1114,14 +1013,8 @@ def format_live_events() -> str:
         slug       = ev.get("slug", "")
         url        = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
 
-        time_status, time_note = compute_time_status(ev)
-
         entry = f"• {name} ({comp_type})"
         if status:       entry += f" — Website status: {status}"
-        if time_status and time_status != "unknown":
-            entry += f" — Time-derived status: {time_status}"
-            if time_note:
-                entry += f" ({time_note})"
         if start_date:   entry += f" — Date: {start_date}"
         if start_time:   entry += f" at {start_time}"
         if prizepool:    entry += f" — Prize: {prizepool}"
@@ -1216,11 +1109,12 @@ If you genuinely cannot find the answer — say so honestly and tell the user to
 - If a user asks how to contact AFC admins on Discord, give them this exact link and nothing else
 - Do NOT use markdown link aliases like [AFC Discord](other-url) — write the raw URL above
 - When someone asks about tournament times, dates, status, or registration — check the LIVE EVENT DATA section first, it is the most up-to-date source
-- LIVE EVENT DATA shows BOTH the website status AND a time-derived status. Trust the time-derived status when the website is clearly out of date (e.g. website still says "pending" but the start time was hours ago — tell the user the event should be live or has likely ended)
-- If a tournament status is "pending", "upcoming", or "registration_open" AND the time-derived status is "upcoming" or "starting_soon", tell the user it hasn't started yet and share the date/time
-- If the time-derived status is "in_progress" (or website says "live"/"in_progress"), tell the user the event should be running right now
-- If the time-derived status is "likely_ended" (or website says "completed"/"ended"), tell the user it has finished
-- When answering "what time" / "when does it start" questions, give the EXACT date and time from the LIVE EVENT DATA — never make one up. If no time is set, say so honestly.
+- The "Website status" field is the ONLY source of truth for whether an event is live, ended, registration_open, etc. NEVER claim a tournament or scrim has started, is live, or has ended based on the listed Date alone — that date may be the registration deadline, not the match time
+- If the website status is "live", "in_progress", "started", or "ongoing" → tell the user it is running now
+- If the website status is "completed", "ended", or "finished" → tell the user it has finished
+- If the website status is "pending", "upcoming", or "registration_open" → tell the user registration is open / it hasn't started yet, and share the listed date
+- If the listed date has passed but the website status is still "pending"/"registration_open"/etc., DO NOT assume the event ended. Tell the user the listed date has passed but the official status hasn't updated, and suggest they check the event page or ask staff
+- When answering "what time" / "when does it start" questions, give the EXACT date and time from the LIVE EVENT DATA — never make one up. If no time is set, say so honestly. Make clear this is the listed event date, not necessarily the exact match start.
 - If someone asks about the status of THEIR registration (e.g. "still pending"), do NOT tell them how to check on the platform from scratch — acknowledge the issue, explain that pending teams are reviewed by admins, and escalate to support so a human can verify their entry.
 
 {live_events}
