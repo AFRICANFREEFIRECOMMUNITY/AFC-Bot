@@ -553,16 +553,20 @@ async def event_poll_loop():
     if not seen:
         events = await fetch_all_events()
         _cached_events = events
-        seen = {str(e["event_id"]) for e in events}
+        # Only seed INTERNAL events. Externals stay unseen so that if/when they flip
+        # to internal, they get announced as if newly created.
+        seen = {str(e["event_id"]) for e in events if e.get("event_type") != "external"}
         save_seen_events(seen)
-        # Seed statuses on first boot so we don't spam status changes
+        # Seed statuses on first boot so we don't spam status changes (internals only)
         for e in events:
+            if e.get("event_type") == "external":
+                continue
             eid = str(e["event_id"])
             status = e.get("status", "")
             if status:
                 event_statuses[eid] = status
         _save_event_statuses(event_statuses)
-        print(f"🎮  Event poll: seeded {len(seen)} existing event(s). Watching for new ones.")
+        print(f"🎮  Event poll: seeded {len(seen)} existing internal event(s). Watching for new ones.")
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
@@ -571,7 +575,12 @@ async def event_poll_loop():
             _cached_events = events  # Always refresh the cache for the system prompt
 
             # ── Announce NEW events ──
-            new_events = [e for e in events if str(e["event_id"]) not in seen]
+            # Skip external events. They never enter `seen`, so if an event later
+            # flips from external → internal it will be announced like a new event.
+            new_events = [
+                e for e in events
+                if str(e["event_id"]) not in seen and e.get("event_type") != "external"
+            ]
 
             for event in reversed(new_events):
                 try:
@@ -598,6 +607,9 @@ async def event_poll_loop():
             # ── Detect STATUS CHANGES on existing events ──
             statuses_changed = False
             for event in events:
+                # Don't announce status changes on external events.
+                if event.get("event_type") == "external":
+                    continue
                 eid = str(event.get("event_id"))
                 new_status = event.get("status", "")
                 old_status = event_statuses.get(eid, "")
