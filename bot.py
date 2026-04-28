@@ -137,6 +137,10 @@ history: dict[str, dict] = {}
 _cached_events: list[dict] = []
 # File to persist event statuses for tracking changes across restarts
 SEEN_EVENT_STATUSES_FILE = os.path.join(BASE_DIR, "seen_event_statuses.json")
+# File listing event IDs we have classified as "external" via the detail endpoint.
+# Externals don't get announced. Each cycle we re-check these in case they flip
+# back to "internal", at which point the event gets announced as if newly created.
+EXTERNAL_EVENT_IDS_FILE = os.path.join(BASE_DIR, "external_event_ids.json")
 
 
 # ── Persistent history helpers ───────────────────────────────────────────────
@@ -446,6 +450,32 @@ async def fetch_all_events() -> list:
         return []
 
 
+async def fetch_event_type(slug: str) -> str | None:
+    """Fetch the event_type ("internal" / "external") for a single event via the
+    public detail endpoint. The list endpoint doesn't expose this field, so we
+    classify each new event by hitting /events/get-event-details-not-logged-in/.
+    Returns None on any error so callers can fall back to "treat as internal"."""
+    if not slug:
+        return None
+    url = f"{AFC_API_BASE}/events/get-event-details-not-logged-in/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json={"slug": slug},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                details = data.get("event_details") or {}
+                etype = details.get("event_type")
+                return etype if isinstance(etype, str) else None
+    except Exception as e:
+        print(f"⚠️  fetch_event_type({slug}) failed: {e}")
+        return None
+
+
 async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
     """Build the announcement embed for a tournament or scrim. Returns (embed, optional_ping)."""
     name       = event.get("event_name", "New Event")
@@ -501,6 +531,25 @@ def _save_event_statuses(statuses: dict):
         print(f"⚠️  Could not save event statuses: {e}")
 
 
+def _load_external_ids() -> set:
+    """Load the set of event IDs we have classified as external."""
+    if os.path.exists(EXTERNAL_EVENT_IDS_FILE):
+        try:
+            with open(EXTERNAL_EVENT_IDS_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+
+def _save_external_ids(external_ids: set):
+    try:
+        with open(EXTERNAL_EVENT_IDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(external_ids), f)
+    except Exception as e:
+        print(f"⚠️  Could not save external_event_ids.json: {e}")
+
+
 def _build_status_change_embed(event: dict, old_status: str, new_status: str) -> discord.Embed:
     """Build an embed announcing a tournament/scrim status change."""
     name      = event.get("event_name", "Unknown Event")
@@ -549,24 +598,32 @@ async def event_poll_loop():
 
     seen = load_seen_events()
     event_statuses = _load_event_statuses()
+    external_ids = _load_external_ids()
 
     if not seen:
         events = await fetch_all_events()
         _cached_events = events
-        # Only seed INTERNAL events. Externals stay unseen so that if/when they flip
-        # to internal, they get announced as if newly created.
-        seen = {str(e["event_id"]) for e in events if e.get("event_type") != "external"}
-        save_seen_events(seen)
-        # Seed statuses on first boot so we don't spam status changes (internals only)
+        # Classify every existing event via the detail endpoint and split into
+        # internal vs external. Internals get seeded into `seen` (and their status
+        # tracked) so we don't spam announcements at first boot. Externals get
+        # remembered separately so we can re-check them each cycle for flips.
         for e in events:
-            if e.get("event_type") == "external":
-                continue
             eid = str(e["event_id"])
+            etype = await fetch_event_type(e.get("slug", ""))
+            if etype == "external":
+                external_ids.add(eid)
+                continue
+            seen.add(eid)
             status = e.get("status", "")
             if status:
                 event_statuses[eid] = status
+        save_seen_events(seen)
         _save_event_statuses(event_statuses)
-        print(f"🎮  Event poll: seeded {len(seen)} existing internal event(s). Watching for new ones.")
+        _save_external_ids(external_ids)
+        print(
+            f"🎮  Event poll: seeded {len(seen)} internal event(s) "
+            f"({len(external_ids)} external skipped). Watching for new ones."
+        )
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
@@ -574,15 +631,37 @@ async def event_poll_loop():
             events = await fetch_all_events()
             _cached_events = events  # Always refresh the cache for the system prompt
 
-            # ── Announce NEW events ──
-            # Skip external events. They never enter `seen`, so if an event later
-            # flips from external → internal it will be announced like a new event.
-            new_events = [
-                e for e in events
-                if str(e["event_id"]) not in seen and e.get("event_type") != "external"
-            ]
+            # ── Classify every event we don't already know is internal ──
+            # We only call the detail endpoint when classification is needed:
+            #   - Brand-new events (id not in `seen` and not in `external_ids`)
+            #   - Events previously classified as external (in case they flipped)
+            # Events already in `seen` are known internal — no extra request.
+            announce_candidates: list[dict] = []
+            external_changed = False
 
-            for event in reversed(new_events):
+            for event in events:
+                eid = str(event["event_id"])
+                if eid in seen:
+                    continue  # known internal, already announced
+
+                etype = await fetch_event_type(event.get("slug", ""))
+
+                if etype == "external":
+                    if eid not in external_ids:
+                        external_ids.add(eid)
+                        external_changed = True
+                    continue
+
+                # Treat None (fetch failure) as internal — better to announce
+                # something we already gated through the seen set than to miss a
+                # legitimate event because of a transient API hiccup.
+                if eid in external_ids:
+                    external_ids.discard(eid)
+                    external_changed = True
+                announce_candidates.append(event)
+
+            # ── Announce NEW (internal) events ──
+            for event in reversed(announce_candidates):
                 try:
                     embed, ping = await build_event_embed(event)
                     is_scrim = event.get("competition_type", "").lower() == "scrims"
@@ -601,16 +680,21 @@ async def event_poll_loop():
                 except Exception as e:
                     print(f"⚠️  Failed to post event {event.get('event_id')}: {e}")
 
-            if new_events:
+            if announce_candidates:
                 save_seen_events(seen)
+            if external_changed:
+                _save_external_ids(external_ids)
 
             # ── Detect STATUS CHANGES on existing events ──
+            # Only consider events we've already announced (i.e. tracked internals).
+            # Externals never enter `seen` so they're naturally excluded; the
+            # `eid not in seen` check also skips brand-new events whose status
+            # change would be redundant with the announcement that just fired.
             statuses_changed = False
             for event in events:
-                # Don't announce status changes on external events.
-                if event.get("event_type") == "external":
-                    continue
                 eid = str(event.get("event_id"))
+                if eid not in seen:
+                    continue
                 new_status = event.get("status", "")
                 old_status = event_statuses.get(eid, "")
 
