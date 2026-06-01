@@ -8,6 +8,7 @@ name: Deploy to AWS
 # See deploy/aws/README.md for the full setup.
 
 on:
+  workflow_dispatch:   # manual "Run workflow" button in the Actions tab
   push:
     branches: [main]
     paths-ignore:
