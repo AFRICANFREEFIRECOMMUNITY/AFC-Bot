@@ -1,6 +1,13 @@
 # Secrets — never commit
 .env
 
+# SSH / private keys — never commit
+*.pem
+*.ppk
+*.key
+afc-deploy-key
+afc-deploy-key.pub
+
 # Python
 __pycache__/
 *.py[cod]
