@@ -47,10 +47,15 @@ if [[ $UPDATE_ONLY -eq 0 ]]; then
     fi
 fi
 
-echo "==> Pulling latest"
+echo "==> Syncing to origin/main"
+# reset --hard (not pull --ff-only): the running bot leaves the tree dirty
+# (knowledge_base.txt is rewritten by auto_scrape_loop), which makes a plain pull
+# fail. git is the source of truth here. reset --hard updates tracked files only
+# and leaves UNTRACKED files (the gitignored seen_*.json / conversation_history.json)
+# in place, so dedup/seen-state survives the deploy — no announcement re-spam.
 sudo -u "${APP_USER}" git -C "${APP_DIR}" fetch --all --prune
 sudo -u "${APP_USER}" git -C "${APP_DIR}" checkout main
-sudo -u "${APP_USER}" git -C "${APP_DIR}" pull --ff-only origin main
+sudo -u "${APP_USER}" git -C "${APP_DIR}" reset --hard origin/main
 
 echo "==> Creating venv + installing requirements"
 if [[ ! -d "${VENV_DIR}" ]]; then

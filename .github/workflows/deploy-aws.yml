@@ -1,0 +1,44 @@
+name: Deploy to AWS
+
+# Push to main -> SSH into the EC2 box -> git reset --hard origin/main + restart.
+# Requires three repository secrets (Settings -> Secrets and variables -> Actions):
+#   EC2_HOST     public IP or DNS of the instance (use an Elastic IP so it never changes)
+#   EC2_USER     the SSH user — "ubuntu" on an Ubuntu AMI
+#   EC2_SSH_KEY  the PRIVATE deploy key whose public half is in the box's ~/.ssh/authorized_keys
+# See deploy/aws/README.md for the full setup.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # update_knowledge.yml commits knowledge_base.txt every 3h. The bot reads
+      # knowledge live and re-scrapes on its own, so a knowledge-only commit must
+      # NOT trigger a redeploy/restart.
+      - 'knowledge_base.txt'
+
+# Never run two deploys at once; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Update the bot on EC2 over SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_USER" ] || [ -z "$EC2_SSH_KEY" ]; then
+            echo "::error::Missing one of the EC2_HOST / EC2_USER / EC2_SSH_KEY secrets. See deploy/aws/README.md."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+            -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
+            'sudo bash /home/ubuntu/AFC-Bot/deploy/oracle/setup.sh --update'
