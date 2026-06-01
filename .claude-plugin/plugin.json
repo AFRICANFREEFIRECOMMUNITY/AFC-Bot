@@ -1,0 +1,13 @@
+{
+  "name": "afc-bot-kit",
+  "version": "1.0.0",
+  "description": "Agent Development Kit for the AFC Discord bot: project skills (system-prompt editing, knowledge-base management, background loops, deployment), subagents (code-reviewer, prompt-auditor, bot-explorer), and guardrail hooks (protect knowledge_base.txt, py_compile bot.py, block npm, block AI co-author).",
+  "author": {
+    "name": "African Freefire Community"
+  },
+  "homepage": "https://africanfreefirecommunity.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AFRICANFREEFIRECOMMUNITY/AFC-Bot"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "afc-bot-marketplace",
+  "owner": "AFRICANFREEFIRECOMMUNITY",
+  "plugins": [
+    {
+      "name": "afc-bot-kit",
+      "source": {
+        "type": "github",
+        "repo": "AFRICANFREEFIRECOMMUNITY/AFC-Bot"
+      },
+      "description": "ADK skills, subagents, and guardrail hooks for working on the AFC Discord bot."
+    }
+  ]
+}
