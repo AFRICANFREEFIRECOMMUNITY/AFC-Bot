@@ -1,635 +1,589 @@
 ============================
-AFC KNOWLEDGE BASE
+AFC WEBSITE KNOWLEDGE
 Source: https://africanfreefirecommunity.com
-Last Updated: 2026-03-29 20:10:53
+Last Updated: 2026-06-02 20:22 UTC
 ============================
 
 
---- PAGE: /home ---
-African Freefire Community
-Log in
-Join Now
-Login
-Loading
-
-
 --- PAGE: /about ---
-African Freefire Community
-Log in
-Join Now
-Login
-About AFC
-Our Mission
-The African Freefire Community (AFC) is dedicated to fostering a competitive and supportive environment for Freefire players across Africa. Our mission is to promote esports, develop talent, and create opportunities for players to showcase their skills on a global stage.
-Our Vision
-We envision a thriving African Freefire esports scene that is recognized worldwide for its talent, passion, and professionalism. Through our efforts, we aim to elevate African players and teams to compete at the highest levels of international tournaments.
-Our Values
-Integrity: We uphold the highest standards of fair play and sportsmanship.
-Community: We foster a supportive and inclusive environment for all players.
-Excellence: We strive for continuous improvement and excellence in all our endeavors.
-Innovation: We embrace new technologies and strategies to advance the Freefire esports scene.
-Empowerment: We provide resources and opportunities for players to develop their skills and achieve their goals.
-
+About AFC Our Mission The African Freefire Community (AFC) is dedicated to fostering a competitive and supportive environment for Freefire players across Africa. Our mission is to promote esports, develop talent, and create opportunities for players to showcase their skills on a global stage. Our Vision We envision a thriving African Freefire esports scene that is recognized worldwide for its talent, passion, and professionalism. Through our efforts, we aim to elevate African players and teams to compete at the highest levels of international tournaments. Our Values Integrity: We uphold the highest standards of fair play and sportsmanship. Community: We foster a supportive and inclusive environment for all players. Excellence: We strive for continuous improvement and excellence in all our endeavors. Innovation: We embrace new technologies and strategies to advance the Freefire esports scene. Empowerment: We provide resources and opportunities for players to develop their skills and achieve their goals.
 
 --- PAGE: /rules ---
-African Freefire Community
-Log in
-Join Now
-Login
-AFC Handbook
-The official governing framework for all African Freefire Community competitions.
-Player Eligibility & Requirements
-Core requirements for player participation including account, age, and regional criteria.
-Team Registration & Roster Management
-Guidelines for team formation, registration processes, and roster submissions.
-Code of Conduct & Player Behavior
-Standards of sportsmanship, prohibited behaviors, and professional interaction guidelines.
-Game Participation & Evidence Requirements
-Protocols for match participation, recording requirements, and submission of game evidence.
-Equipment & Technical Standards
-Approved devices, prohibited equipment, and technical compliance requirements.
-Dress Code & Uniform Requirements
-Official uniform standards and appearance requirements for tournament participation.
-Team Ownership & Management
-Rules governing team ownership, transfers, and management responsibilities.
-Roster Changes, Transfers & Player Loans
-Guidelines for roster modifications, transfer windows, and player loan agreements.
-Slot Buying & Selling
-Complete framework for tournament slot acquisitions, sales, and transfers.
-Contract Submission & Management
-Comprehensive guidelines for submitting, reviewing, and enforcing all esports contracts.
-Sponsor & Advertising Regulations
-Rules governing team sponsorships, advertising obligations, and promotional activities.
-Competition Structure & Scheduling
-Match formats, scheduling protocols, and mandatory tournament events.
-Communication with Organizers
-Response requirements, confidentiality obligations, and communication protocols.
-Disciplinary Actions & Violations
-Classification of offenses, investigation procedures, and sanction frameworks.
-Prize Distribution & Forfeiture
-Prize money framework, payment timelines, and conditions for prize forfeiture.
-Intellectual Property & Media Rights
-Ownership rights, usage permissions, and exploitation of tournament content.
-Organizer Veto Rights & Rule Alterations
-Tournament organizer's discretionary powers and authority over competition format.
-Monthly Ranking System
-Short-term performance measurement system updated monthly for teams and players.
-Quarterly Tiering System
-Long-term performance grading system determining competitive classification and benefits.
-Team Tier Classifications & Benefits
-Tier levels, point thresholds, and privileges associated with each classification.
-Metrics System Compliance & Penalties
-Rules governing data verification, point resets, and compliance requirements.
-Rule Discrepancies?
-AFC admins have final veto rights regarding rule interpretation and alterations. Contact us via Discord for immediate clarification.
-Contact Admin Support
-
+AFC Handbook The official governing framework for all African Freefire Community competitions. Player Eligibility & Requirements Core requirements for player participation including account, age, and regional criteria. Team Registration & Roster Management Guidelines for team formation, registration processes, and roster submissions. Code of Conduct & Player Behavior Standards of sportsmanship, prohibited behaviors, and professional interaction guidelines. Game Participation & Evidence Requirements Protocols for match participation, recording requirements, and submission of game evidence. Equipment & Technical Standards Approved devices, prohibited equipment, and technical compliance requirements. Dress Code & Uniform Requirements Official uniform standards and appearance requirements for tournament participation. Team Ownership & Management Rules governing team ownership, transfers, and management responsibilities. Roster Changes, Transfers & Player Loans Guidelines for roster modifications, transfer windows, and player loan agreements. Slot Buying & Selling Complete framework for tournament slot acquisitions, sales, and transfers. Contract Submission & Management Comprehensive guidelines for submitting, reviewing, and enforcing all esports contracts. Sponsor & Advertising Regulations Rules governing team sponsorships, advertising obligations, and promotional activities. Competition Structure & Scheduling Match formats, scheduling protocols, and mandatory tournament events. Communication with Organizers Response requirements, confidentiality obligations, and communication protocols. Disciplinary Actions & Violations Classification of offenses, investigation procedures, and sanction frameworks. Prize Distribution & Forfeiture Prize money framework, payment timelines, and conditions for prize forfeiture. Intellectual Property & Media Rights Ownership rights, usage permissions, and exploitation of tournament content. Organizer Veto Rights & Rule Alterations Tournament organizer's discretionary powers and authority over competition format. Monthly Ranking System Short-term performance measurement system updated monthly for teams and players. Quarterly Tiering System Long-term performance grading system determining competitive classification and benefits. Team Tier Classifications & Benefits Tier levels, point thresholds, and privileges associated with each classification. Metrics System Compliance & Penalties Rules governing data verification, point resets, and compliance requirements. Rule Discrepancies? AFC admins have final veto rights regarding rule interpretation and alterations. Contact us via Discord for immediate clarification. Contact Admin Support
 
 --- PAGE: /contact ---
-African Freefire Community
-Log in
-Join Now
-Login
-Contact Us
-Get in Touch
-Name
-Email
-Message
-Contact Information
-Email
-info@africanfreefirecommunity.com
-Discord
-Join our Discord server:
-AFC
-Social Media
-Twitter
-Tiktok
-Facebook
-Instagram
-Youtube
-
+Contact Us Get in Touch Name Email Message Contact Information Email info@africanfreefirecommunity.com Discord Join our Discord server: AFC Social Media Twitter Tiktok Facebook Instagram Youtube
 
 --- PAGE: /terms-of-service ---
-African Freefire Community
-Log in
-Join Now
-Login
-AFC Terms of Service
-Effective Date:
-Upon Publication
-Entity:
-African Freefire Community (AFC)
-Jurisdiction:
-Federal Republic of Nigeria, operating across Africa
-1. Introduction & Agreement
-Welcome to the African Freefire Community (“AFC”, “we”, “our”, or “us”). These Terms of Service (“Terms”) govern your use of all AFC websites, platforms, tournaments, services, Discord integrations, digital storefronts, and any related products.
-By creating an account, connecting your Discord ID, participating in tournaments, using AFC's website, or purchasing virtual items, you confirm that:
-You have read, understood, and agree to these Terms.
-You accept AFC’s Privacy Policy.
-You are legally capable of entering this agreement.
-If you do not agree to these Terms, you must immediately discontinue use of AFC services. AFC reserves the right to update these Terms at any time. Continued use of AFC services constitutes acceptance of the updated Terms.
-2. Definitions
-For clarity throughout this document:
-“User” / “Player” – any individual who uses AFC services.
-“Account” – an AFC user profile linked to a Discord identity.
-“Virtual Items” – digital items, tournament passes, boosts, cosmetics, or other non-physical assets sold by AFC.
-“Services” – all AFC websites, software, tournaments, leaderboards, metrics systems, Discord features.
-“Fraudulent Activity” – cheating, impersonation, chargebacks, device manipulation, ban evasion, false information, or any activity intended to bypass AFC rules.
-“Banned/Blacklisted” – restricted from participating in AFC events based on AFC rules or investigations.
-3. Eligibility Requirements
-To use AFC services, you must:
-Be at least 13 years old
-Maintain an active Discord account
-Provide accurate account and identification information
-Not be banned, suspended, or blacklisted by AFC
-Meet all tournament eligibility and verification requirements
-AFC may request proof of age or identity at any time.
-4. Account Creation, Ownership & Responsibilities
-4.1 Account Creation
-To register an AFC account, you must provide:
-Discord ID (mandatory)
-Email address
-IGN & Freefire UID
-Any required competitive data
-4.2 Account Ownership
-Accounts belong to AFC; you only receive permission to use them.
-You may not sell, share, lease, or transfer your account.
-You are responsible for keeping your login credentials secure.
-4.3 Multi-Accounting
-Strictly prohibited:
-Creating multiple accounts
-Using alternate accounts to bypass bans
-Smurfing or duplicating device profiles
-AFC may merge, terminate, or permanently ban related accounts.
-5. Proper Use of AFC Services
-Users must not:
-Cheat, manipulate, exploit, or use unauthorized software
-Tamper with device identifiers or location data
-Impersonate individuals or teams
-Harass, abuse, or threaten other users
-Spread hate speech, explicit content, or illegal materials
-Disrupt or attack AFC servers
-Attempt to reverse engineer AFC systems
-Use AFC for unauthorized commercial activities
-AFC may take disciplinary actions against violations.
-6. Tournament Participation & Competitive Integrity
-By entering AFC tournaments, you agree to:
-Follow all tournament rulebooks
-Accept referee decisions as final
-Undergo verification or identity checks
-Submit required gameplay or device evidence
-Comply with anti-cheat investigations
-Respect metrics, tiering, and ranking outcomes
-Maintain good sportsmanship and professional conduct
-AFC reserves full authority to:
-Disqualify players or teams
-Adjust standings or scores
-Issue bans or penalties
-Reject fraudulent participation
-Overturn results based on investigations
-7. Enforcement: Bans, Blacklists & Penalties
-7.1 Grounds for Enforcement
-Violations may include:
-Cheating or suspicious behaviour
-Device manipulation or multi-device fraud
-Use of illegal software (aimbots, ESP, macros, etc.)
-Refusal to cooperate with investigations
-Harassment or misconduct
-False information during registration
-Chargeback attempts or financial fraud
-Breach of ToS or tournament rules
-7.2 Team-Level Enforcement (AFC Standard Policy)
-One banned/blacklisted player = 2-month ban for entire team
-Two banned players = 4-month team ban
-Three banned players = 6-month team ban
-(Team may appeal after serving 1 month.)
-7.3 Appeals
-Players/teams may submit a structured appeal. AFC holds full discretion over final decisions.
-8. Payments, Purchases & Digital Goods
-AFC provides paid services including tournament passes, digital goods, and virtual items.
-8.1 Payment Processing
-All payments are processed via third-party processors (e.g., Paystack, Flutterwave, Stripe). By purchasing, you agree to their respective terms.
-8.2 Accuracy of Billing Information
-Users must provide valid:
-Payment details
-Billing information
-Wallet or account information for payouts
-AFC is not responsible for failed transactions caused by inaccurate or neglected payment data.
-9. Virtual Items Policy (NO REFUNDS)
-Virtual Items include:
-Digital tournament passes
-Boosts, cosmetics, perks
-Tier or XP enhancements
-Premium features
-Any non-physical items sold by AFC
-9.1 Strict No-Refund Rule
-ALL VIRTUAL ITEM SALES ARE FINAL. NO EXCEPTIONS.
-Not refundable due to:
-Accidental purchase
-Unused items
-Misunderstanding the item
-Loss of access due to ban/blacklist
-Device or network issues
-Game performance dissatisfaction
-Duplicate purchases
-Account deletion
-Virtual Items cannot be:
-Refunded
-Reversed
-Exchanged
-Converted to money
-Transferred between accounts
-9.2 Modification of Virtual Items
-AFC may modify, remove, rebalance, or discontinue Virtual Items at any time without compensation.
-10. CHARGEBACK POLICY (Strict Enforcement)
-AFC operates a zero-tolerance policy for chargebacks.
-10.1 Chargeback Consequences
-If a user initiates a chargeback, AFC will:
-Immediately suspend the user’s account
-Place all associated teams under review
-Blacklist the user from all future tournaments
-Revoke any prizes, virtual items, or rankings earned
-Ban or penalize associated accounts
-Pursue recovery of losses, including:
-Chargeback fees
-Penalties from processors
-Administrative costs
-Damages to tournament integrity
-Report the incident to partnering esports bodies (if necessary)
-10.2 False Chargebacks
-Attempting to secure a refund through a chargeback instead of through AFC support is treated as fraudulent activity.
-11. Payouts, Prizes & Financial Requirements
-To receive prizes, users must:
-Provide accurate payout details
-Complete required identity verification
-Comply with tax/regulatory obligations in their region
-Follow AFC winner verification procedures
-AFC is not responsible for bank delays, third-party failures, or incorrect user information.
-12. Content Ownership & Licensing
-12.1 User-Generated Content
-By submitting content to AFC (videos, gameplay clips, images, responses, messages), you grant AFC a worldwide, irrevocable, royalty-free license to:
-Reproduce
-Edit
-Publish
-Distribute
-Display
-Share for marketing, highlights, tournament promotions, and documentation
-This license survives account termination.
-12.2 AFC Property
-All AFC designs, tournament structures, rules, software, metrics, scoring systems, and branding are AFC’s exclusive intellectual property.
-Users may not copy, redistribute, or replicate AFC systems without written permission.
-13. Website Usage & Restrictions
-Users agree not to:
-Scrape, crawl, or copy website data
-Attempt to access admin-only systems
-Reverse engineer platform features
-Upload viruses or malicious code
-Exploit system vulnerabilities
-Automate interactions using bots
-Interfere with operations or analytics
-AFC may pursue legal action for violations.
-14. Data Privacy
-AFC processes user data in accordance with the AFC Privacy Policy, which is fully integrated into these Terms.
-Users acknowledge that:
-AFC collects device, location, gameplay, behavioural, and payment data
-Anti-cheat data is mandatory and not deletable
-Tournament data, metrics, and ranking history are retained long-term
-Data may be stored in Nigeria or abroad through AWS
-Certain permissions are required for platform operation
-15. Cookies & Tracking Tools
-By using AFC services, you consent to:
-Functional cookies
-Security and device fingerprinting
-Anti-cheat tracking
-Analytics cookies
-Marketing cookies (optional)
-Users may opt out of non-essential cookies.
-16. Service Availability & Modifications
-AFC may modify or suspend any service at any time. This includes:
-Tournament formats
-Scoring systems
-Leaderboards
-Discord features
-Virtual item availability
-Website functionality
-Prize pools
-Scheduling changes
-AFC is not responsible for downtime or losses from service interruptions.
-17. Termination of Accounts
-AFC may suspend or terminate accounts for:
-Violations of ToS
-Fraudulent behaviour
-Chargebacks
-Security risks
-Misconduct toward staff
-Offensive or illegal behaviour
-Non-cooperation with investigations
-Users may request account closure, but AFC will retain competitive and anti-cheat data.
-18. Disclaimer of Warranties
-AFC services are provided “as is” and “as available.” We do not guarantee:
-Continuous uptime
-Error-free performance
-Uninterrupted tournaments
-Bug-free website features
-Integration stability with Discord or Freefire
-Accuracy of user-submitted data
-That metrics or analytics will always be precise
-Users assume all risks related to platform use.
-19. Limitation of Liability
-To the fullest extent permitted by law, AFC is not liable for:
-Lost opportunities, prizes, or earnings
-Data loss or corruption
-Bans or suspensions
-Payment processor failures
-Connectivity or lag issues
-Delayed payouts
-Website downtime
-Actions of other users
-Indirect or consequential damages
-AFC’s maximum liability is limited to the total amount the user paid to AFC in the past 12 months.
-20. Indemnification
-You agree to indemnify and hold AFC harmless from any claims, liabilities, damages, losses, or expenses resulting from:
-Your actions or misconduct
-Your breach of these Terms
-Your participation in tournaments
-Third-party disputes involving your behaviour
-21. Governing Law & Dispute Resolution
-These Terms are governed by the laws of the Federal Republic of Nigeria. All disputes must be resolved through Nigerian courts or any jurisdiction AFC deems appropriate.
-22. Contact Information
-African Freefire Community (AFC)
-Official Email:
-info@africanfreefirecommunity.com
-Official Discord Server: AFC Community
-
+AFC Terms of Service Effective Date: Upon Publication Entity: African Freefire Community (AFC) Jurisdiction: Federal Republic of Nigeria, operating across Africa 1. Introduction & Agreement Welcome to the African Freefire Community (“AFC”, “we”, “our”, or “us”). These Terms of Service (“Terms”) govern your use of all AFC websites, platforms, tournaments, services, Discord integrations, digital storefronts, and any related products. By creating an account, connecting your Discord ID, participating in tournaments, using AFC's website, or purchasing virtual items, you confirm that: You have read, understood, and agree to these Terms. You accept AFC’s Privacy Policy. You are legally capable of entering this agreement. If you do not agree to these Terms, you must immediately discontinue use of AFC services. AFC reserves the right to update these Terms at any time. Continued use of AFC services constitutes acceptance of the updated Terms. 2. Definitions For clarity throughout this document: “User” / “Player” – any individual who uses AFC services. “Account” – an AFC user profile linked to a Discord identity. “Virtual Items” – digital items, tournament passes, boosts, cosmetics, or other non-physical assets sold by AFC. “Services” – all AFC websites, software, tournaments, leaderboards, metrics systems, Discord features. “Fraudulent Activity” – cheating, impersonation, chargebacks, device manipulation, ban evasion, false information, or any activity intended to bypass AFC rules. “Banned/Blacklisted” – restricted from participating in AFC events based on AFC rules or investigations. 3. Eligibility Requirements To use AFC services, you must: Be at least 13 years old Maintain an active Discord account Provide accurate account and identification information Not be banned, suspended, or blacklisted by AFC Meet all tournament eligibility and verification requirements AFC may request proof of age or identity at any time. 4. Account Creation, Ownership & Responsibilities 4.1 Account Creation To register an AFC account, you must provide: Discord ID (mandatory) Email address IGN & Freefire UID Any required competitive data 4.2 Account Ownership Accounts belong to AFC; you only receive permission to use them. You may not sell, share, lease, or transfer your account. You are responsible for keeping your login credentials secure. 4.3 Multi-Accounting Strictly prohibited: Creating multiple accounts Using alternate accounts to bypass bans Smurfing or duplicating device profiles AFC may merge, terminate, or permanently ban related accounts. 5. Proper Use of AFC Services Users must not: Cheat, manipulate, exploit, or use unauthorized software Tamper with device identifiers or location data Impersonate individuals or teams Harass, abuse, or threaten other users Spread hate speech, explicit content, or illegal materials Disrupt or attack AFC servers Attempt to reverse engineer AFC systems Use AFC for unauthorized commercial activities AFC may take disciplinary actions against violations. 6. Tournament Participation & Competitive Integrity By entering AFC tournaments, you agree to: Follow all tournament rulebooks Accept referee decisions as final Undergo verification or identity checks Submit required gameplay or device evidence Comply with anti-cheat investigations Respect metrics, tiering, and ranking outcomes Maintain good sportsmanship and professional conduct AFC reserves full authority to: Disqualify players or teams Adjust standings or scores Issue bans or penalties Reject fraudulent participation Overturn results based on investigations 7. Enforcement: Bans, Blacklists & Penalties 7.1 Grounds for Enforcement Violations may include: Cheating or suspicious behaviour Device manipulation or multi-device fraud Use of illegal software (aimbots, ESP, macros, etc.) Refusal to cooperate with investigations Harassment or misconduct False information during registration Chargeback attempts or financial fraud Breach of ToS or tournament rules 7.2 Team-Level Enforcement (AFC Standard Policy) One banned/blacklisted player = 2-month ban for entire team Two banned players = 4-month team ban Three banned players = 6-month team ban (Team may appeal after serving 1 month.) 7.3 Appeals Players/teams may submit a structured appeal. AFC holds full discretion over final decisions. 8. Payments, Purchases & Digital Goods AFC provides paid services including tournament passes, digital goods, and virtual items. 8.1 Payment Processing All payments are processed via third-party processors (e.g., Paystack, Flutterwave, Stripe). By purchasing, you agree to their respective terms. 8.2 Accuracy of Billing Information Users must provide valid: Payment details Billing information Wallet or account information for payouts AFC is not responsible for failed transactions caused by inaccurate or neglected payment data. 9. Virtual Items Policy (NO REFUNDS) Virtual Items include: Digital tournament passes Boosts, cosmetics, perks Tier or XP enhancements Premium features Any non-physical items sold by AFC 9.1 Strict No-Refund Rule ALL VIRTUAL ITEM SALES ARE FINAL. NO EXCEPTIONS. Not refundable due to: Accidental purchase Unused items Misunderstanding the item Loss of access due to ban/blacklist Device or network issues Game performance dissatisfaction Duplicate purchases Account deletion Virtual Items cannot be: Refunded Reversed Exchanged Converted to money Transferred between accounts 9.2 Modification of Virtual Items AFC may modify, remove, rebalance, or discontinue Virtual Items at any time without compensation. 10. CHARGEBACK POLICY (Strict Enforcement) AFC operates a zero-tolerance policy for chargebacks. 10.1 Chargeback Consequences If a user initiates a chargeback, AFC will: Immediately suspend the user’s account Place all associated teams under review Blacklist the user from all future tournaments Revoke any prizes, virtual items, or rankings earned Ban or penalize associated accounts Pursue recovery of losses, including: Chargeback fees Penalties from processors Administrative costs Damages to tournament integrity Report the incident to partnering esports bodies (if necessary) 10.2 False Chargebacks Attempting to secure a refund through a chargeback instead of through AFC support is treated as fraudulent activity. 11. Payouts, Prizes & Financial Requirements To receive prizes, users must: Provide accurate payout details Complete required identity verification Comply with tax/regulatory obligations in their region Follow AFC winner verification procedures AFC is not responsible for bank delays, third-party failures, or incorrect user information. 12. Content Ownership & Licensing 12.1 User-Generated Content By submitting content to AFC (videos, gameplay clips, images, responses, messages), you grant AFC a worldwide, irrevocable, royalty-free license to: Reproduce Edit Publish Distribute Display Share for marketing, highlights, tournament promotions, and documentation This license survives account termination. 12.2 AFC Property All AFC designs, tournament structures, rules, software, metrics, scoring systems, and branding are AFC’s exclusive intellectual property. Users may not copy, redistribute, or replicate AFC systems without written permission. 13. Website Usage & Restrictions Users agree not to: Scrape, crawl, or copy website data Attempt to access admin-only systems Reverse engineer platform features Upload viruses or malicious code Exploit system vulnerabilities Automate interactions using bots Interfere with operations or analytics AFC may pursue legal action for violations. 14. Data Privacy AFC processes user data in accordance with the AFC Privacy Policy, which is fully integrated into these Terms. Users acknowledge that: AFC collects device, location, gameplay, behavioural, and payment data Anti-cheat data is mandatory and not deletable Tournament data, metrics, and ranking history are retained long-term Data may be stored in Nigeria or abroad through AWS Certain permissions are required for platform operation 15. Cookies & Tracking Tools By using AFC services, you consent to: Functional cookies Security and device fingerprinting Anti-cheat tracking Analytics cookies Marketing cookies (optional) Users may opt out of non-essential cookies. 16. Service Availability & Modifications AFC may modify or suspend any service at any time. This includes: Tournament formats Scoring systems Leaderboards Discord features Virtual item availability Website functionality Prize pools Scheduling changes AFC is not responsible for downtime or losses from service interruptions. 17. Termination of Accounts AFC may suspend or terminate accounts for: Violations of ToS Fraudulent behaviour Chargebacks Security risks Misconduct toward staff Offensive or illegal behaviour Non-cooperation with investigations Users may request account closure, but AFC will retain competitive and anti-cheat data. 18. Disclaimer of Warranties AFC services are provided “as is” and “as available.” We do not guarantee: Continuous uptime Error-free performance Uninterrupted tournaments Bug-free website features Integration stability with Discord or Freefire Accuracy of user-submitted data That metrics or analytics will always be precise Users assume all risks related to platform use. 19. Limitation of Liability To the fullest extent permitted by law, AFC is not liable for: Lost opportunities, prizes, or earnings Data loss or corruption Bans or suspensions Payment processor failures Connectivity or lag issues Delayed payouts Website downtime Actions of other users Indirect or consequential damages AFC’s maximum liability is limited to the total amount the user paid to AFC in the past 12 months. 20. Indemnification You agree to indemnify and hold AFC harmless from any claims, liabilities, damages, losses, or expenses resulting from: Your actions or misconduct Your breach of these Terms Your participation in tournaments Third-party disputes involving your behaviour 21. Governing Law & Dispute Resolution These Terms are governed by the laws of the Federal Republic of Nigeria. All disputes must be resolved through Nigerian courts or any jurisdiction AFC deems appropriate. 22. Contact Information African Freefire Community (AFC) Official Email: info@africanfreefirecommunity.com Official Discord Server: AFC Community
 
 --- PAGE: /privacy-policy ---
-African Freefire Community
-Log in
-Join Now
-Login
-AFC Privacy Policy Agreement
-Effective Date:
-Upon Publication
-Entity:
-African Freefire Community (AFC)
-1. Introduction
-The African Freefire Community (“AFC”, “we”, “our”, or “us”) operates a competitive esports and community platform serving players across Africa. This Privacy Policy explains how AFC collects, uses, stores, protects, and shares information when users access the AFC website, participate in tournaments, engage with the AFC metrics system, or use any AFC-integrated services.
-By creating an account or participating in AFC activities, you agree to the practices described in this Policy.
-2. Information We Collect
-We collect data required to operate tournaments, maintain competitive integrity, enhance user experience, and secure the platform. This includes:
-2.1 Identity & Profile Data
-Name (optional)
-Username / IGN
-Freefire UID
-Discord ID (for OAuth and verification)
-Email address
-Profile information you provide
-2.2 Device & Technical Data
-Device type
-Operating system
-Browser type
-Device identifiers
-Advertising identifiers
-IP address
-Location data (coarse and device-based)
-Session activity
-Device fingerprinting data (anti-cheat and fraud prevention)
-2.3 Gameplay & Performance Data
-Collected automatically when you participate in AFC tournaments/scrims:
-Kills, damage, placements
-Team participation
-Tournament rankings
-Metrics and tier progression
-Ban or blacklist information
-2.4 Payment & Transaction Data
-Payment card or wallet information (processed through third-party processors)
-Purchase history
-Prize payout records
-Financial verifications (if required)
-2.5 Behavioural & Interaction Data
-Clickstream data
-Time on page
-Session analytics
-Engagement with website features
-Device behaviour signals used for anti-cheat and fraud prevention
-3. How We Use Your Information
-AFC processes collected data for the following business-critical purposes:
-3.1 Security, Integrity & Anti-Cheat
-Detect cheating, fraud, smurfing, multi-accounting, impersonation
-Enforce bans, penalties, and blacklist decisions
-Protect tournament fairness
-Monitor suspicious device or location activity
-3.2 Tournament Operations
-Verify player identity and eligibility
-Rank players and calculate metrics
-Manage leaderboards, rewards, and qualifications
-Maintain historical competition records
-3.3 Platform Analytics & Personalisation
-Improve user experience
-Personalize tournaments, recommendations, and content
-Conduct performance analytics
-Monitor website usage and engagement
-3.4 Marketing & Communications
-Send tournament updates, notifications, newsletters
-Deliver sponsor or partner announcements
-Discord-linked communications
-(Users may opt out of marketing.)
-3.5 Payments & Financial Processing
-Manage tournament prize payouts
-Handle user purchases
-Verify financial transactions for compliance
-3.6 Legal & Compliance
-Respond to lawful requests
-Maintain audit trails
-Protect AFC’s legal, financial, and operational interests
-4. Third-Party Data Processors
-Your data may be shared with trusted third parties who support AFC operations. These partners process data strictly under AFC’s instructions.
-These include:
-AWS – hosting and infrastructure
-Discord – identity verification and communication
-Analytics providers (Google Analytics, Mixpanel, or equivalent)
-Payment processors (e.g., Stripe, Paystack, Flutterwave)
-Anti-cheat or security providers
-Email service providers
-Development partners under NDA
-AFC does not sell user data.
-5. Data Retention
-To preserve competitive integrity, prevent abuse, and maintain historical records, AFC retains certain data long-term.
-5.1 Retention Schedule
-Account Data: retained for as long as the account remains active, and up to 10 years after inactivity.
-Tournament Data: retained indefinitely.
-Metrics, Rankings & Historical Performance: retained indefinitely.
-Ban / Blacklist Records: retained indefinitely.
-Device & Location Logs: retained for 5–7 years.
-Payment & Financial Data: retained for up to 7 years (standard financial compliance).
-6. User Rights
-AFC respects user rights while balancing the operational needs of esports integrity. Users may request:
-Access to their personal data
-Correction of inaccurate data
-Opt-out from marketing communications
-Opt-out from non-essential analytics tracking
-Users cannot request deletion of:
-Tournament performance data
-Metrics, rankings, and historical records
-Ban or blacklist information
-Device or fraud-prevention identifiers
-Data tied to prize winnings or financial records
-Anti-cheat data
-These categories are exempt from deletion to preserve competitive fairness and security.
-7. Children’s Privacy
-Participation in AFC requires users to be at least 13 years old, aligning with global online service standards and Discord’s minimum age requirement.
-We do not knowingly collect information from anyone under 13.
-Accounts found to be underage will be disabled.
-8. Cookies & Tracking Technologies
-AFC uses cookies and tracking tools for functionality, analytics, and security.
-8.1 Mandatory Cookies (cannot opt-out)
-Functional site operations
-Authentication
-Anti-cheat and device fingerprinting
-Security monitoring
-Session management
-8.2 Optional Cookies (opt-out allowed)
-Marketing cookies
-Analytics not tied to security or anti-cheat
-UX testing cookies
-Advertising identifiers
-Users can manage preferences in their browser settings and AFC cookie banner.
-9. Data Security Measures
-We implement industry-standard security protocols, including:
-End-to-end encrypted data storage
-Strict access controls limited to developers and core management
-Two-factor authentication for admin access
-Audit logs for data exports
-No storage of personal data on staff devices
-Routine security reviews
-Automated threat monitoring
-10. Cross-Border Data Transfers
-By using AFC, you acknowledge that your data may be processed in Nigeria and other countries where we operate or maintain cloud infrastructure (including AWS regions).
-We use reasonable technical and contractual safeguards to protect data regardless of location.
-11. Data Breach Policy
-AFC maintains a structured incident response protocol. In the event of a breach involving user data, AFC will:
-Contain the breach and secure systems
-Conduct a full investigation
-Notify high-risk affected users
-Provide disclosure within 72 hours when legally required
-Document all findings and remediation steps
-Apply sanctions for internal violations or misuse
-12. Legal Basis for Processing
-Depending on your region, AFC processes data based on:
-Contractual necessity (running tournaments, verifying eligibility)
-Legitimate interest (site security, anti-cheat, analytics)
-Consent (marketing, optional cookies)
-Legal obligations (financial records, fraud investigations)
-13. Changes to This Policy
-AFC may update this Privacy Policy periodically. Material changes will be communicated through the website, Discord, or email notifications.
-Continued use of AFC services constitutes acceptance of changes.
-14. Contact Information
-For data queries, complaints, or access requests, contact:
-African Freefire Community (AFC)
-Email:
-info@africanfreefirecommunity.com
-Discord: Official AFC Server
-
-
---- PAGE: /tournaments ---
-African Freefire Community
-Log in
-Join Now
-Login
-Loading...
-
-
---- PAGE: /teams ---
-African Freefire Community
-Log in
-Join Now
-Login
-Teams
-Explore and manage Freefire teams
-Create Team
-All Teams
-View and manage all teams in the system
-No teams available.
-
-
---- PAGE: /news ---
-African Freefire Community
-Log in
-Join Now
-Login
-News & Updates
-No articles found
-No articles available at the moment
-
+AFC Privacy Policy Agreement Effective Date: Upon Publication Entity: African Freefire Community (AFC) 1. Introduction The African Freefire Community (“AFC”, “we”, “our”, or “us”) operates a competitive esports and community platform serving players across Africa. This Privacy Policy explains how AFC collects, uses, stores, protects, and shares information when users access the AFC website, participate in tournaments, engage with the AFC metrics system, or use any AFC-integrated services. By creating an account or participating in AFC activities, you agree to the practices described in this Policy. 2. Information We Collect We collect data required to operate tournaments, maintain competitive integrity, enhance user experience, and secure the platform. This includes: 2.1 Identity & Profile Data Name (optional) Username / IGN Freefire UID Discord ID (for OAuth and verification) Email address Profile information you provide 2.2 Device & Technical Data Device type Operating system Browser type Device identifiers Advertising identifiers IP address Location data (coarse and device-based) Session activity Device fingerprinting data (anti-cheat and fraud prevention) 2.3 Gameplay & Performance Data Collected automatically when you participate in AFC tournaments/scrims: Kills, damage, placements Team participation Tournament rankings Metrics and tier progression Ban or blacklist information 2.4 Payment & Transaction Data Payment card or wallet information (processed through third-party processors) Purchase history Prize payout records Financial verifications (if required) 2.5 Behavioural & Interaction Data Clickstream data Time on page Session analytics Engagement with website features Device behaviour signals used for anti-cheat and fraud prevention 3. How We Use Your Information AFC processes collected data for the following business-critical purposes: 3.1 Security, Integrity & Anti-Cheat Detect cheating, fraud, smurfing, multi-accounting, impersonation Enforce bans, penalties, and blacklist decisions Protect tournament fairness Monitor suspicious device or location activity 3.2 Tournament Operations Verify player identity and eligibility Rank players and calculate metrics Manage leaderboards, rewards, and qualifications Maintain historical competition records 3.3 Platform Analytics & Personalisation Improve user experience Personalize tournaments, recommendations, and content Conduct performance analytics Monitor website usage and engagement 3.4 Marketing & Communications Send tournament updates, notifications, newsletters Deliver sponsor or partner announcements Discord-linked communications (Users may opt out of marketing.) 3.5 Payments & Financial Processing Manage tournament prize payouts Handle user purchases Verify financial transactions for compliance 3.6 Legal & Compliance Respond to lawful requests Maintain audit trails Protect AFC’s legal, financial, and operational interests 4. Third-Party Data Processors Your data may be shared with trusted third parties who support AFC operations. These partners process data strictly under AFC’s instructions. These include: AWS – hosting and infrastructure Discord – identity verification and communication Analytics providers (Google Analytics, Mixpanel, or equivalent) Payment processors (e.g., Stripe, Paystack, Flutterwave) Anti-cheat or security providers Email service providers Development partners under NDA AFC does not sell user data. 5. Data Retention To preserve competitive integrity, prevent abuse, and maintain historical records, AFC retains certain data long-term. 5.1 Retention Schedule Account Data: retained for as long as the account remains active, and up to 10 years after inactivity. Tournament Data: retained indefinitely. Metrics, Rankings & Historical Performance: retained indefinitely. Ban / Blacklist Records: retained indefinitely. Device & Location Logs: retained for 5–7 years. Payment & Financial Data: retained for up to 7 years (standard financial compliance). 6. User Rights AFC respects user rights while balancing the operational needs of esports integrity. Users may request: Access to their personal data Correction of inaccurate data Opt-out from marketing communications Opt-out from non-essential analytics tracking Users cannot request deletion of: Tournament performance data Metrics, rankings, and historical records Ban or blacklist information Device or fraud-prevention identifiers Data tied to prize winnings or financial records Anti-cheat data These categories are exempt from deletion to preserve competitive fairness and security. 7. Children’s Privacy Participation in AFC requires users to be at least 13 years old, aligning with global online service standards and Discord’s minimum age requirement. We do not knowingly collect information from anyone under 13. Accounts found to be underage will be disabled. 8. Cookies & Tracking Technologies AFC uses cookies and tracking tools for functionality, analytics, and security. 8.1 Mandatory Cookies (cannot opt-out) Functional site operations Authentication Anti-cheat and device fingerprinting Security monitoring Session management 8.2 Optional Cookies (opt-out allowed) Marketing cookies Analytics not tied to security or anti-cheat UX testing cookies Advertising identifiers Users can manage preferences in their browser settings and AFC cookie banner. 9. Data Security Measures We implement industry-standard security protocols, including: End-to-end encrypted data storage Strict access controls limited to developers and core management Two-factor authentication for admin access Audit logs for data exports No storage of personal data on staff devices Routine security reviews Automated threat monitoring 10. Cross-Border Data Transfers By using AFC, you acknowledge that your data may be processed in Nigeria and other countries where we operate or maintain cloud infrastructure (including AWS regions). We use reasonable technical and contractual safeguards to protect data regardless of location. 11. Data Breach Policy AFC maintains a structured incident response protocol. In the event of a breach involving user data, AFC will: Contain the breach and secure systems Conduct a full investigation Notify high-risk affected users Provide disclosure within 72 hours when legally required Document all findings and remediation steps Apply sanctions for internal violations or misuse 12. Legal Basis for Processing Depending on your region, AFC processes data based on: Contractual necessity (running tournaments, verifying eligibility) Legitimate interest (site security, anti-cheat, analytics) Consent (marketing, optional cookies) Legal obligations (financial records, fraud investigations) 13. Changes to This Policy AFC may update this Privacy Policy periodically. Material changes will be communicated through the website, Discord, or email notifications. Continued use of AFC services constitutes acceptance of changes. 14. Contact Information For data queries, complaints, or access requests, contact: African Freefire Community (AFC) Email: info@africanfreefirecommunity.com Discord: Official AFC Server
 
 --- PAGE: /awards ---
-Best Overall Creator (Male)
-JOKKIE
-Official Winner
-Community Favorite
-Best Overall Creator (Female)
-SCARLETT
-Official Winner
-Community Favorite
-Best Streamer (Male)
-RUDY
-Official Winner
-Community Favorite
-Best Streamer (Female)
-SCARLETT
-Official Winner
-Community Favorite
-Funniest Creator (Male)
-NNAYIZOOM
-Official Winner
-Community Favorite
-Funniest Creator (Female)
-SUCCESS
-Official Winner
-Community Favorite
-Best Editor (Male)
-DARKSEIDFF
-Official Winner
-Community Favorite
-Best Editor (Female)
-STEPHHATESPEOPLE
-Official Winner
-Community Favorite
-Upcoming Creator (Male)
-THABANG
-Official Winner
-Community Favorite
-Upcoming Creator (Female)
-LUNA
-Official Winner
-Community Favorite
-Attractive Creator (Male)
-DMS
-Official Winner
-Community Favorite
-Attractive Creator (Female)
-SCARLETT
-Official Winner
-Community Favorite
-Educational Content (Male)
-VIC VIX
-Official Winner
-Community Favorite
-Best Music Creator (Male)
-ELVICCI
-Official Winner
-Community Favorite
-Best Voiceover (Male)
-BAYMAX
-Official Winner
-Community Favorite
-Favorite DUO (Male)
-JOKKIE
-Official Winner
-Community Favorite
-Favorite DUO (MALE)
-XIXSCO
-Official Winner
-Community Favorite
-Congratulations to all Nominees!
-Every participant has contributed to making the Nigerian Free Fire community what it is today. See you in NFCA 2026!
+NFCA 2025 Nigerian Free Fire Community Awards — celebrate the best creators and players in the community. Best Overall Creator (Male) JOKKIE Official Winner Community Favorite Best Overall Creator (Female) SCARLETT Official Winner Community Favorite Best Streamer (Male) RUDY Official Winner Community Favorite Best Streamer (Female) SCARLETT Official Winner Community Favorite Funniest Creator (Male) NNAYIZOOM Official Winner Community Favorite Funniest Creator (Female) SUCCESS Official Winner Community Favorite Best Editor (Male) DARKSEIDFF Official Winner Community Favorite Best Editor (Female) STEPHHATESPEOPLE Official Winner Community Favorite Upcoming Creator (Male) THABANG Official Winner Community Favorite Upcoming Creator (Female) LUNA Official Winner Community Favorite Attractive Creator (Male) DMS Official Winner Community Favorite Attractive Creator (Female) SCARLETT Official Winner Community Favorite Educational Content (Male) VIC VIX Official Winner Community Favorite Best Music Creator (Male) ELVICCI Official Winner Community Favorite Best Voiceover (Male) BAYMAX Official Winner Community Favorite Favorite DUO (Male) JOKKIE Official Winner Community Favorite Favorite DUO (MALE) XIXSCO Official Winner Community Favorite Congratulations to all Nominees! Every participant has contributed to making the Nigerian Free Fire community what it is today. See you in NFCA 2026!
+
+--- AFC TEAMS DIRECTORY (live from API) ---
+Total registered teams: 560 — 560 active, 0 banned.
+One line per team: NAME [tag] — country, tier, members.
+
+- 001 — NG, Tier 3, 6 members
+- 1 Million Esport — Nigeria, Tier 3, 1 members
+- 10th CODE² — Nigeria, Tier 3, 1 members
+- 14k Triad — Nigeria, Tier 3, 1 members
+- 1st kingdom — Sudan, Tier 3, 1 members
+- 1timedeadman — NG, Tier 3, 1 members
+- 2 fast — Nigeria, Tier 3, 2 members
+- 2WILD2KILL — NG, Tier 3, 5 members
+- 4BOTS — Mozambique, Tier 3, 4 members
+- 4PF Esports — South Africa, Tier 3, 7 members
+- 5G Girls — Nigeria, Tier 3, 1 members
+- 7GODS — NG, Tier 3, 4 members
+- 7Life — US, Tier 3, 4 members
+- 7x Family — Nigeria, Tier 3, 1 members
+- @J U S T  U S — NG, Tier 3, 4 members
+- ACE E-SPORTS — Ghana, Tier 3, 7 members
+- ACE.SOLO — Ethiopia, Tier 3, 4 members
+- ADRINOKA — TN, Tier 3, 1 members
+- AEROXX — KE, Tier 3, 3 members
+- AFC FastX — Nigeria, Tier 3, 4 members
+- AFRO LEGENDS — NG, Tier 3, 7 members
+- AGENTS ESPORT — Nigeria, Tier 3, 1 members
+- Akimichi esport — Nigeria, Tier 3, 5 members
+- Akod — NG, Tier 3, 1 members
+- ALIEN X — NG, Tier 3, 5 members
+- ALIEN X ESPORT — Nigeria, Tier 3, 1 members
+- ALL STAR FR — Côte d’Ivoire, Tier 3, 5 members
+- ALPHA SQUAD — GH, Tier 3, 1 members
+- Alpha Wolves — Cabo Verde, Tier 3, 3 members
+- Alpha_x team — NG, Tier 3, 1 members
+- Alphas — NG, Tier 3, 3 members
+- Alte-BaDDies — NG, Tier 3, 3 members
+- AMIGOES — Cabo Verde, Tier 3, 6 members
+- AOD ESPORTS — NG, Tier 3, 3 members
+- APEX TITANS — NG, Tier 3, 1 members
+- APEX-ESPORTS — ET, Tier 3, 4 members
+- APEXION ESPORTS — NG, Tier 3, 6 members
+- ARE ESPORTS — ZA, Tier 3, 4 members
+- Arise Esport — Côte d’Ivoire, Tier 3, 6 members
+- Ark_Engelz — NG, Tier 3, 1 members
+- ATHLEGAME ESPORT — Nigeria, Tier 3, 7 members
+- ATLASSA ESPORT — Nigeria, Tier 3, 1 members
+- AURA_FARMERS — Nigeria, Tier 3, 1 members
+- AURAs — Nigeria, Tier 3, 1 members
+- AUTOBOTS — Madagascar, Tier 3, 6 members
+- AVENGERS — NG, Tier 3, 7 members
+- B2k.  MEN — NG, Tier 3, 1 members
+- BAD BOYS — CV, Tier 3, 5 members
+- BAD EMPIRE — Nigeria, Tier 3, 1 members
+- BAD PINGS — NG, Tier 3, 2 members
+- BALVERS ESP — Ethiopia, Tier 3, 3 members
+- BAN ESPORTS — NG, Tier 3, 5 members
+- BANDITS_FFX — Nigeria, Tier 3, 2 members
+- BCT-EXPORTS TEAM — CV, Tier 3, 5 members
+- BEEHIVE — NG, Tier 3, 2 members
+- BERSERK GENERATION — Nigeria, Tier 3, 7 members
+- BGD ESPORTS — RO, Tier 3, 4 members
+- BIS — Nigeria, Tier 3, 3 members
+- Black bluds — NG, Tier 3, 1 members
+- BLACK BULLS — Nigeria, Tier 3, 2 members
+- Black Crow Esports — Nigeria, Tier 3, 2 members
+- Black dragons — Nigeria, Tier 3, 5 members
+- BLACK HAVOC — TZ, Tier 3, 3 members
+- Black Opz — Nigeria, Tier 3, 4 members
+- Black Throne Esport — NG, Tier 3, 2 members
+- BLACK WOLF — Madagascar, Tier 3, 1 members
+- Black_Romans_esport — South Africa, Tier 3, 1 members
+- BLACKSTAR ESPORTS — GH, Tier 3, 8 members
+- BLITZ PROTOCOL — Kenya, Tier 3, 4 members
+- BLOOD  HONOUR — Cabo Verde, Tier 3, 6 members
+- BLOOD HOUNDS — TZ, Tier 3, 2 members
+- BlZ.ESPORTS — Ethiopia, Tier 3, 3 members
+- BOLT ESPORTS — Nigeria, Tier 3, 5 members
+- BORNO  HEROES — NG, Tier 3, 5 members
+- Boss killers — Nigeria, Tier 3, 1 members
+- Bots esport — NG, Tier 3, 5 members
+- Bov ESPORTS — GB, Tier 3, 2 members
+- BOW 2 US — NG, Tier 3, 5 members
+- Breakthrough — Ghana, Tier 3, 1 members
+- BROTHERs — NG, Tier 3, 6 members
+- BRUTALITY-X — MG, Tier 3, 1 members
+- BTR E-SPORTS — Cabo Verde, Tier 3, 7 members
+- BUILD TEST PLAY — Nigeria, Tier 3, 5 members
+- BURN KNUCKLES — ET, Tier 3, 5 members
+- Cavaliers Esports — Madagascar, Tier 3, 5 members
+- CHAOS — Madagascar, Tier 3, 7 members
+- CHAOS X — NG, Tier 3, 6 members
+- Chikamso ubah — Nigeria, Tier 3, 1 members
+- ChronoDisrup — Nigeria, Tier 3, 6 members
+- CIA . esports — Nigeria, Tier 3, 5 members
+- CLIQ ESPORT — Nigeria, Tier 3, 6 members
+- Cobra Kai — US, Tier 3, 1 members
+- Code reapers — Nigeria, Tier 3, 4 members
+- CODE_LEGACY — Nigeria, Tier 3, 3 members
+- CONQUERORS.¥ — Nigeria, Tier 3, 5 members
+- CONQUISTADOR — Senegal, Tier 3, 6 members
+- COSA NOSTRA — South Africa, Tier 3, 3 members
+- CP-9 — Senegal, Tier 3, 5 members
+- CPU — MG, Tier 3, 5 members
+- Crazy Blood — GH, Tier 3, 1 members
+- CREED ESPORTS — Nigeria, Tier 3, 7 members
+- Criptoboyz — NG, Tier 3, 2 members
+- CRYPTIC LEGENDS — NG, Tier 3, 4 members
+- CSS BLAZERS — Nigeria, Tier 3, 1 members
+- D E A D S Q U A D — NG, Tier 3, 5 members
+- D E S P A R T A N S — NG, Tier 3, 4 members
+- dark assassin — NG, Tier 3, 1 members
+- DARK FAMILY — Nigeria, Tier 3, 6 members
+- Dark Legion — NG, Tier 3, 2 members
+- Dark Wings — TZ, Tier 3, 5 members
+- Dark-Empire — NG, Tier 3, 3 members
+- DARK_MAGE — Nigeria, Tier 3, 3 members
+- De ultimate — NG, Tier 3, 1 members
+- Dead Zone — NG, Tier 3, 1 members
+- DEADLY ALLIANCE — Nigeria, Tier 3, 0 members
+- Death storm — Senegal, Tier 3, 5 members
+- DEATHRREAPERS — NG, Tier 3, 2 members
+- Dehunter — NG, Tier 3, 5 members
+- DELTA FORCE — MG, Tier 3, 1 members
+- DEMON CLAN — NG, Tier 3, 7 members
+- DERRICK — Nigeria, Tier 3, 1 members
+- Desire — ZA, Tier 3, 0 members
+- DESIRE. — ZA, Tier 3, 5 members
+- Destroyers — Nigeria, Tier 3, 1 members
+- Destruction Squad — TZ, Tier 3, 6 members
+- DETROIT — CV, Tier 3, 3 members
+- DEVILS — NG, Tier 3, 1 members
+- DEX TEU PAI — PT, Tier 3, 1 members
+- Diabolical Tactical squad — Nigeria, Tier 3, 1 members
+- DISHAL ESPORT — Nigeria, Tier 3, 2 members
+- Divine¹ chaos eSports — Nigeria, Tier 3, 4 members
+- DIVISION — Nigeria, Tier 3, 1 members
+- DOMINATORS ESPORTS 👑⚔️ — Nigeria, Tier 3, 3 members
+- DOOM SQUAD — Nigeria, Tier 3, 1 members
+- DR3AMERS ESP — South Africa, Tier 3, 1 members
+- Dragon clan — NG, Tier 3, 2 members
+- DREAMERS — Nigeria, Tier 3, 1 members
+- DRK ESPORTS — Nigeria, Tier 3, 5 members
+- E-SPORTS — MZ, Tier 3, 1 members
+- E4U  ESPORTS — TZ, Tier 3, 8 members
+- EAGLES 4N — Morocco, Tier 3, 2 members
+- ECLIPSHUNTER — TG, Tier 3, 2 members
+- EGOIST — Nigeria, Tier 3, 1 members
+- EL SUPERIOR — NG, Tier 3, 1 members
+- Elim 9 Esport — Nigeria, Tier 3, 4 members
+- Elite gamers esport — Nigeria, Tier 3, 1 members
+- ELITE SISTERS — MG, Tier 3, 1 members
+- Elite-Rift — NG, Tier 3, 2 members
+- Elite_1245 — ZA, Tier 3, 2 members
+- ENDTIMES — NG, Tier 3, 1 members
+- Epidon slayers — NG, Tier 3, 1 members
+- ES-VIRUS — NG, Tier 3, 1 members
+- ETH E-SPORT — ET, Tier 3, 1 members
+- ETH ESPORT — ET, Tier 3, 4 members
+- Ethio hzn — ET, Tier 3, 4 members
+- ETHMastersWing — ZA, Tier 3, 5 members
+- EUVINCI PRO GAMERS — Nigeria, Tier 3, 5 members
+- EVIL AURA — NG, Tier 3, 7 members
+- Evil doctors — Nigeria, Tier 3, 1 members
+- Evil menacer — NG, Tier 3, 2 members
+- Evilsixteen Mediatordeprince — NG, Tier 3, 6 members
+- Evuu Esport — NG, Tier 3, 1 members
+- Ex        MAFIANS — Nigeria, Tier 3, 4 members
+- EX CONVITS — Nigeria, Tier 3, 8 members
+- Exodus esp — ZA, Tier 3, 5 members
+- EZVANT — Senegal, Tier 3, 6 members
+- F4family — NG, Tier 3, 3 members
+- FAKE RUSHERS — NG, Tier 3, 6 members
+- Fangs — Nigeria, Tier 3, 1 members
+- FATALRIFT ESOPRT — Ethiopia, Tier 3, 2 members
+- FAUCHEUR — MG, Tier 3, 6 members
+- FAZ O P — MZ, Tier 3, 5 members
+- FAZ O X — PT, Tier 3, 1 members
+- FAZ O X1 — CV, Tier 3, 6 members
+- Fear No Bill — Madagascar, Tier 3, 7 members
+- FEAR-THEM — Nigeria, Tier 3, 4 members
+- Fedaykin — TZ, Tier 3, 5 members
+- FF ESPORT — Nigeria, Tier 3, 1 members
+- Ff sam — LR, Tier 3, 1 members
+- FF_BOTTLERS — ZA, Tier 3, 1 members
+- FffGODS-ESP — NG, Tier 3, 1 members
+- Fire furry E-sport — Nigeria, Tier 3, 1 members
+- FireMonody — NG, Tier 3, 1 members
+- FLUXOmz — MZ, Tier 3, 4 members
+- FORSE ESP — Ethiopia, Tier 3, 9 members
+- FORSE ESPORT — ET, Tier 3, 1 members
+- FROZEN EMPIRE — Madagascar, Tier 3, 6 members
+- G.O.A.T — TZ, Tier 3, 0 members
+- GANGE PRIME — MG, Tier 3, 3 members
+- GANZADOS — Cabo Verde, Tier 3, 2 members
+- GENESIS X ESPORTS — Nigeria, Tier 3, 6 members
+- Genz Smokey's — NG, Tier 3, 2 members
+- GEVO — Burundi, Tier 3, 1 members
+- GH E-SPORTS — GH, Tier 3, 1 members
+- GH-ESPORTS — GH, Tier 3, 5 members
+- GHOST — Nigeria, Tier 3, 1 members
+- GHOST-BANDIT — Nigeria, Tier 3, 1 members
+- Ghoul — MG, Tier 3, 1 members
+- God beats all — NG, Tier 3, 1 members
+- GOD CREATOR — NG, Tier 3, 5 members
+- GOD KNIGHTS — Nigeria, Tier 3, 2 members
+- GODFATHER — Nigeria, Tier 3, 2 members
+- GOLDEN WARRIORS — Nigeria, Tier 3, 4 members
+- GOON 4 US — ZA, Tier 3, 1 members
+- Gooners — NG, Tier 3, 7 members
+- GOTEI 99 — GH, Tier 3, 6 members
+- Grandlegend — Nigeria, Tier 3, 2 members
+- GUNNERS ELIMINATE — NG, Tier 3, 2 members
+- HATERS ESP — Ethiopia, Tier 3, 2 members
+- HEAD HUNTERS — TZ, Tier 3, 2 members
+- HEADSHOT E-SPORT — Cabo Verde, Tier 3, 4 members
+- Hell bound — Nigeria, Tier 3, 1 members
+- Hell max — Nigeria, Tier 3, 1 members
+- HEROX ESPORT — NG, Tier 3, 5 members
+- Holy monks — Nigeria, Tier 3, 1 members
+- Holyhex eSports — Nigeria, Tier 3, 5 members
+- Homeboyz — Nigeria, Tier 3, 1 members
+- HONORED ONE ESPORTS — NG, Tier 3, 4 members
+- HUNTER x HUNTER — Madagascar, Tier 3, 6 members
+- Hunters — Nigeria, Tier 3, 1 members
+- HYDRA FX TEAM — NG, Tier 3, 6 members
+- HYDRAINS — Nigeria, Tier 3, 2 members
+- ICONIC CHARACTERS — Nigeria, Tier 3, 5 members
+- IDENTITY — NG, Tier 3, 6 members
+- IMAZIGHN — Morocco, Tier 3, 1 members
+- IN-HUMANS — TZ, Tier 3, 5 members
+- Infernans — NG, Tier 3, 3 members
+- Inferno E-Sport — Nigeria, Tier 3, 2 members
+- INFERNOESPORTS — Nigeria, Tier 3, 5 members
+- INFINITY — ET, Tier 3, 4 members
+- INSANO X — Nigeria, Tier 3, 1 members
+- INVIXABLE ESP — NG, Tier 3, 2 members
+- IQ SQUAD — TZ, Tier 3, 5 members
+- ISAAC ESPORTS — Nigeria, Tier 3, 2 members
+- IT DEV ESPORT — Madagascar, Tier 3, 6 members
+- JavaScript XML — Madagascar, Tier 3, 4 members
+- JL E-SPORT — Mozambique, Tier 3, 2 members
+- JOGA BONITA — South Africa, Tier 3, 2 members
+- JOKKIE — NL, Tier 3, 1 members
+- JUJUTSU — Nigeria, Tier 3, 4 members
+- JUJUTSU ESPORTS — NG, Tier 3, 1 members
+- JUST TRY — South Africa, Tier 3, 2 members
+- JUST TRY PRIME — South Africa, Tier 3, 3 members
+- KAIZEN EVOLUTION — Nigeria, Tier 3, 6 members
+- KAKASHI — Nigeria, Tier 3, 1 members
+- KAYS — MG, Tier 3, 5 members
+- KCOT Esports — NG, Tier 3, 3 members
+- Kill Switch — NG, Tier 3, 1 members
+- Killervibe — Nigeria, Tier 3, 7 members
+- KING IV ESPORTS — NG, Tier 3, 7 members
+- KING IV ESPORTS TEAM 2 — Nigeria, Tier 3, 1 members
+- KING_CLAN eSports — NG, Tier 3, 4 members
+- KNIGHTS E-SPORTS — Nigeria, Tier 3, 6 members
+- KNIGHTS X4 — Morocco, Tier 3, 1 members
+- KOCC ESPORTS — Senegal, Tier 3, 6 members
+- Krioulo Force — CV, Tier 3, 6 members
+- LD_Esport — Nigeria, Tier 3, 5 members
+- LEAD ACCESS — Nigeria, Tier 3, 7 members
+- LEADER SN — Senegal, Tier 3, 1 members
+- Leckside — Nigeria, Tier 3, 1 members
+- Legacies — Nigeria, Tier 3, 2 members
+- Legend squad — Nigeria, Tier 3, 1 members
+- LEGENDS — Nigeria, Tier 3, 2 members
+- LEO_OFFICIAL E SPORTS — Nigeria, Tier 3, 2 members
+- LIVING DEAD ESPORT — NG, Tier 3, 1 members
+- Lunar sisters — Nigeria, Tier 3, 1 members
+- M2B ESPORT — Nigeria, Tier 3, 1 members
+- Mad rippers — NG, Tier 3, 1 members
+- MADAGASCAR — DE, Tier 3, 1 members
+- MAFO ESPORT — NG, Tier 3, 2 members
+- MAGIC SQUAD — Nigeria, Tier 3, 2 members
+- Main Street — CV, Tier 3, 5 members
+- MAJOR ESPORTS — South Africa, Tier 3, 1 members
+- MAJOR ESPORTS . — ZA, Tier 3, 1 members
+- MASTERS AND DOMINATORS — Nigeria, Tier 3, 1 members
+- Masters Squad Killer Esport — CG, Tier 3, 6 members
+- Max Richy@45 — NG, Tier 3, 2 members
+- Monarchs of gaming — Nigeria, Tier 3, 6 members
+- Naija Boyz player — Nigeria, Tier 3, 1 members
+- NAIJA TITANS E-SPORTS — Nigeria, Tier 3, 2 members
+- NECRO VENOMS — Ethiopia, Tier 3, 6 members
+- NEM JOGOU — Mozambique, Tier 3, 6 members
+- NEON PULSE — Morocco, Tier 3, 1 members
+- NEXAL ESPORTS — Nigeria, Tier 3, 1 members
+- NEXIOM FLUX — Nigeria, Tier 3, 6 members
+- NEXT ERA — NG, Tier 3, 1 members
+- NEXT ERA ESP — NG, Tier 3, 4 members
+- NEXT GAMERS ESPORTS — Nigeria, Tier 3, 5 members
+- NEXUS — TZ, Tier 3, 5 members
+- NFFX — MZ, Tier 3, 1 members
+- NGB_ESPORTS — NG, Tier 3, 5 members
+- NIGERIANS — NG, Tier 3, 6 members
+- NIGHT GAMERS — Cabo Verde, Tier 3, 1 members
+- Night Hounds — Nigeria, Tier 3, 8 members
+- NIGHT_E SPORTS — Nigeria, Tier 3, 1 members
+- NIGHTRIDERZ — TZ, Tier 3, 6 members
+- NO PRESSURE — Nigeria, Tier 3, 6 members
+- NOBLE ESPORTS — Nigeria, Tier 3, 1 members
+- NOENTITY — ZM, Tier 3, 2 members
+- NOOBZ Esports — Nigeria, Tier 3, 7 members
+- NOT HUMANS — NG, Tier 3, 1 members
+- NOT THEM — Nigeria, Tier 3, 3 members
+- NOVA DINASTY — Cabo Verde, Tier 3, 4 members
+- NOVA IMPERIUM — Nigeria, Tier 3, 7 members
+- NOVA IMPERIUM NXG — NG, Tier 3, 3 members
+- NOVA MAJESTY — NG, Tier 3, 6 members
+- NOVA X — Nigeria, Tier 3, 5 members
+- NOVA_SHIP — NG, Tier 3, 4 members
+- NOVAX ESPORT — CA, Tier 3, 1 members
+- NOX — South Africa, Tier 3, 8 members
+- NOx dynasty — NG, Tier 3, 2 members
+- NS-ESPORTS — Nigeria, Tier 3, 3 members
+- NXT 7 — ZA, Tier 3, 2 members
+- NØVAX Esports — Nigeria, Tier 3, 6 members
+- OBLIVION ESPORTS — Nigeria, Tier 3, 2 members
+- OblivionX — Madagascar, Tier 3, 1 members
+- OFF GIRLS — MZ, Tier 3, 4 members
+- OFFLINE — ET, Tier 3, 3 members
+- OLD ERRA — Nigeria, Tier 3, 3 members
+- OLD GANG — Nigeria, Tier 3, 8 members
+- Older Gamers — Nigeria, Tier 3, 1 members
+- ONE PIECE ESP — Nigeria, Tier 3, 1 members
+- ONE PUNCH ESPORTS — Nigeria, Tier 3, 1 members
+- ONE TAP MASTER — NG, Tier 3, 1 members
+- Onefunnybro eSports — Nigeria, Tier 3, 1 members
+- Only Fans — NG, Tier 3, 4 members
+- ONLY FANS ESP — Nigeria, Tier 3, 5 members
+- Only us — NG, Tier 3, 5 members
+- OnlyGENERALS — NG, Tier 3, 1 members
+- OP_LEGENDS — NG, Tier 3, 1 members
+- Orex Scrim — Nigeria, Tier 3, 1 members
+- ORIGAMI ESPORT — Morocco, Tier 3, 1 members
+- OS BLACKS — CV, Tier 3, 6 members
+- OSU E-SPORT — MG, Tier 3, 5 members
+- OTB FAMILY — Nigeria, Tier 3, 7 members
+- Otunmopon — NG, Tier 3, 4 members
+- OUTLAWS@565 — GH, Tier 3, 3 members
+- OVER POWER — Cabo Verde, Tier 3, 2 members
+- PANTHERS — Morocco, Tier 3, 3 members
+- PARADOX GAMING — South Africa, Tier 3, 5 members
+- Peacekeeper — Nigeria, Tier 3, 0 members
+- PEERLESS FORCE — Nigeria, Tier 3, 4 members
+- Phantom ESP — Nigeria, Tier 3, 7 members
+- Phantom Esport — Nigeria, Tier 3, 2 members
+- PHANTOM ESPORTS — Nigeria, Tier 3, 2 members
+- PHILOMINA — NG, Tier 3, 1 members
+- PHOENIX ESP — Ethiopia, Tier 3, 1 members
+- PHOENIX ESPORTS — Nigeria, Tier 3, 6 members
+- Phoenix Force — Nigeria, Tier 3, 1 members
+- PIR ESPORTS — AO, Tier 3, 1 members
+- POWER GRID UNITED — Nigeria, Tier 3, 3 members
+- POWER GRID XERA — NG, Tier 3, 4 members
+- Prime Shift Esports — Nigeria, Tier 3, 6 members
+- PRIVILEGE — Togo, Tier 3, 4 members
+- PRIVILEGE E-SPORT — Togo, Tier 3, 2 members
+- Pro gamers — Ethiopia, Tier 3, 4 members
+- PROMISECARD1 — NG, Tier 3, 1 members
+- PSG peak shot gamers — Nigeria, Tier 3, 2 members
+- PvP__Clan — NG, Tier 3, 3 members
+- Quer tela — MZ, Tier 3, 1 members
+- QUORA ESPORTS — Nigeria, Tier 3, 1 members
+- QX4 — GH, Tier 3, 6 members
+- R7 ESPORTS — NG, Tier 3, 4 members
+- RAGNAROK — NG, Tier 3, 6 members
+- Raiders — NG, Tier 3, 6 members
+- RASKARDS — CM, Tier 3, 2 members
+- RATED ESPORTS — Nigeria, Tier 3, 7 members
+- REALKINGSFF — NG, Tier 3, 1 members
+- REASON XP — South Africa, Tier 3, 1 members
+- REBELS ESPORT — Nigeria, Tier 3, 6 members
+- REBORN ESPORTS — NG, Tier 3, 2 members
+- RED 0 — TZ, Tier 3, 5 members
+- RED COMMAND — CV, Tier 3, 2 members
+- Remontada boys — NG, Tier 3, 1 members
+- Republic of gamer — MG, Tier 3, 1 members
+- RESTART ESPORTS — Ethiopia, Tier 3, 4 members
+- RIPPERS ESPORTS — Nigeria, Tier 3, 2 members
+- ROCKET BOY — Madagascar, Tier 3, 2 members
+- ROGUE PRESTIGE — GH, Tier 3, 1 members
+- ROLENZ ARMY — Kenya, Tier 3, 3 members
+- Royal Kingdom Esport — Nigeria, Tier 3, 6 members
+- Royal Prime — GB, Tier 3, 5 members
+- RS E-SPORTS — CV, Tier 3, 5 members
+- S2 ESP — CV, Tier 3, 6 members
+- Sabbzy — Nigeria, Tier 3, 1 members
+- SABER — NG, Tier 3, 3 members
+- SAINTS UNITED — Nigeria, Tier 3, 5 members
+- Savage Eclipse eSports — NG, Tier 3, 2 members
+- SAVANT SYN — NG, Tier 3, 2 members
+- Savant syn ESP — Nigeria, Tier 3, 1 members
+- SCARKING GAMING — NG, Tier 3, 3 members
+- SCARKING_GAMING — NG, Tier 3, 6 members
+- School boys — Nigeria, Tier 3, 1 members
+- SCORPIO ESP — Nigeria, Tier 3, 3 members
+- SEASON 5 — Nigeria, Tier 3, 6 members
+- Sem _pressao — CV, Tier 3, 6 members
+- SENTINELS — Morocco, Tier 3, 1 members
+- SHADOW ARMY ES — Nigeria, Tier 3, 6 members
+- Shadow garden — CM, Tier 3, 1 members
+- Shadow Hunters — NG, Tier 3, 1 members
+- SHADOW KAGE — Nigeria, Tier 3, 4 members
+- SHADOW MONARCHS — Nigeria, Tier 3, 2 members
+- SHADOWS — NG, Tier 3, 4 members
+- ShadowX — CV, Tier 3, 2 members
+- SILENCERS — NG, Tier 3, 1 members
+- Silent assassin's — NG, Tier 3, 1 members
+- SIMPS Esport — NG, Tier 3, 2 members
+- SINSOCIETY — Nigeria, Tier 3, 2 members
+- SKYLINERS — South Africa, Tier 3, 1 members
+- SKYMAZE — GH, Tier 3, 1 members
+- SLAYERS — Nigeria, Tier 3, 5 members
+- Slyza — South Africa, Tier 3, 1 members
+- SMOKERS — NG, Tier 3, 2 members
+- SN ESPORT — NG, Tier 3, 1 members
+- SN_Legende — SN, Tier 3, 6 members
+- SNOWFALL — Ethiopia, Tier 3, 4 members
+- SOLAR FLARE ESPORT — Nigeria, Tier 3, 6 members
+- SON OF GOD — IT, Tier 3, 4 members
+- SOUL REAPERS — Nigeria, Tier 3, 6 members
+- Soul Society — RE, Tier 3, 6 members
+- SPACE X — Madagascar, Tier 3, 6 members
+- Spark — NG, Tier 3, 1 members
+- SPRAYER-ESPORT — NG, Tier 3, 6 members
+- SR ESPORTS — NG, Tier 3, 6 members
+- Stars E-sport — Madagascar, Tier 3, 6 members
+- STORMLORDS — Nigeria, Tier 3, 4 members
+- STREET ESPORTS — Nigeria, Tier 3, 4 members
+- STYLERS ESPORTS — ZA, Tier 3, 3 members
+- SUDO — Tanzania, Tier 3, 6 members
+- SUICIDE SQUAD — NG, Tier 3, 5 members
+- Sultan — TZ, Tier 3, 1 members
+- SUPER ESPORT — Senegal, Tier 3, 5 members
+- SUPER ESPORTS — Nigeria, Tier 3, 2 members
+- Surviving aura — Nigeria, Tier 3, 1 members
+- SUSPECTS — NG, Tier 3, 1 members
+- SYNCHRON-X — Madagascar, Tier 3, 6 members
+- SYNDICATE — Nigeria, Tier 3, 6 members
+- Syndicate Hex eSports — Nigeria, Tier 3, 1 members
+- T9  DOLLAR — MZ, Tier 3, 1 members
+- TCX Esports — Nigeria, Tier 3, 6 members
+- Team 7 — Nigeria, Tier 3, 6 members
+- TEAM E-S — Madagascar, Tier 3, 4 members
+- Team ESYN — Madagascar, Tier 3, 5 members
+- Team panthers — Morocco, Tier 3, 1 members
+- Team Red Phenix — MG, Tier 3, 4 members
+- Team Richie — NG, Tier 3, 1 members
+- TEAM TOXIC — Madagascar, Tier 3, 6 members
+- Team Zero — NG, Tier 3, 4 members
+- TEAM-ROGUE — Nigeria, Tier 3, 8 members
+- The African Goldens — Nigeria, Tier 3, 6 members
+- THE BEEKEEPERS — NG, Tier 3, 1 members
+- The BLUDLINE — Nigeria, Tier 3, 5 members
+- The Chaos — Nigeria, Tier 3, 1 members
+- The crocs — NG, Tier 3, 4 members
+- The Dark — Nigeria, Tier 3, 2 members
+- THE ELITES — ZA, Tier 3, 6 members
+- THE gODKILLERS — NG, Tier 3, 7 members
+- The GODs ARE WISE — Benin, Tier 3, 1 members
+- The Husk E-Sport — Nigeria, Tier 3, 1 members
+- THE JOKERS — NG, Tier 3, 5 members
+- THE LAST — Nigeria, Tier 3, 5 members
+- THE MONARCHS — NG, Tier 3, 2 members
+- THE MYLIN ESPORTS — Nigeria, Tier 3, 1 members
+- The OGs — Nigeria, Tier 3, 1 members
+- THE ORIGINALS — NG, Tier 3, 1 members
+- THE REGIONALS — NG, Tier 3, 6 members
+- The Risen — Nigeria, Tier 3, 1 members
+- The saints — Nigeria, Tier 3, 5 members
+- The TERMINATORS — Nigeria, Tier 3, 6 members
+- The Terrorists — NG, Tier 3, 1 members
+- THE UNDEAD CLAN — NG, Tier 3, 7 members
+- THE VALKYRIES — Nigeria, Tier 3, 6 members
+- THE VENOM — Nigeria, Tier 3, 1 members
+- The wildcards — NG, Tier 3, 3 members
+- THE XIX — Nigeria, Tier 3, 2 members
+- THE ZOLDYCKS ESPORT — Nigeria, Tier 3, 1 members
+- The_Conquerors — NG, Tier 3, 4 members
+- TL COSA NOSTRA — South Africa, Tier 3, 1 members
+- TME ace BANDITS — NG, Tier 3, 4 members
+- TOMAN E-SPORTS — Nigeria, Tier 3, 2 members
+- Tomiwa's team — Nigeria, Tier 3, 3 members
+- Top Tanzania — TZ, Tier 3, 1 members
+- TOP TANZANIA ESPORTS — TZ, Tier 3, 8 members
+- TOXIC CLOWNS — Nigeria, Tier 3, 4 members
+- Toxic knight — Nigeria, Tier 3, 4 members
+- TOXIC REIGN — Nigeria, Tier 3, 2 members
+- ToxicBeez — South Africa, Tier 3, 1 members
+- TRG ESPORT — Senegal, Tier 3, 6 members
+- TRY HARDS — TZ, Tier 3, 1 members
+- TRY US. — Madagascar, Tier 3, 5 members
+- TTILEGENDS — South Africa, Tier 3, 1 members
+- TYRANT ESPORT — Nigeria, Tier 3, 2 members
+- TYRANTS — NG, Tier 3, 6 members
+- TZ BANDITS — TZ, Tier 3, 5 members
+- UNDEAFEATED — NG, Tier 3, 1 members
+- UNFORFIVEN Esports — Nigeria, Tier 3, 2 members
+- Unholygods — Nigeria, Tier 3, 5 members
+- UNION .X — Nigeria, Tier 3, 6 members
+- UNITED FRONTLINE ARMY — TZ, Tier 3, 1 members
+- Ur Death — Nigeria, Tier 3, 1 members
+- V-ENT ESPORTS — Nigeria, Tier 3, 6 members
+- V1PER teams — NG, Tier 3, 6 members
+- VANGUARD ESPORTS — NG, Tier 3, 5 members
+- VASTAMUNDO — Nigeria, Tier 3, 6 members
+- Venom dynasty — NG, Tier 3, 1 members
+- VICTOR_CREW — Nigeria, Tier 3, 2 members
+- Victors — NG, Tier 3, 2 members
+- Vipers — Nigeria, Tier 3, 0 members
+- VIREX ESPORTS — Nigeria, Tier 3, 5 members
+- VIXUS — SN, Tier 3, 1 members
+- VOID ESPORT — Nigeria, Tier 3, 1 members
+- VOID LEGION — Nigeria, Tier 3, 5 members
+- VOLTA E-SPORT — Senegal, Tier 3, 6 members
+- VOLTRIX ESPORT — Nigeria, Tier 3, 3 members
+- VORTEX CLAN — Nigeria, Tier 3, 1 members
+- VORTEX SQUAD — Nigeria, Tier 3, 5 members
+- VORTEX TANZANIA — Tanzania, Tier 3, 7 members
+- VYRONIX E-SPORT — Benin, Tier 3, 6 members
+- WABONGO — TZ, Tier 3, 1 members
+- WAGWAN ESPORTS — Nigeria, Tier 3, 6 members
+- WAR ESP — Ethiopia, Tier 3, 1 members
+- WarCode — GH, Tier 3, 3 members
+- WARKINGS — NG, Tier 3, 2 members
+- WHO ARE YOU — NG, Tier 3, 3 members
+- Who-Died Esport — Nigeria, Tier 3, 4 members
+- X Area e-Sport — MG, Tier 3, 7 members
+- X MEN ES — Nigeria, Tier 3, 4 members
+- X-DEMONS — CV, Tier 3, 5 members
+- X-TREME GAMING — Nigeria, Tier 3, 5 members
+- X2 Esports — NG, Tier 3, 3 members
+- X7 — PT, Tier 3, 1 members
+- XAX E-SPORTS — Nigeria, Tier 3, 6 members
+- XLD E-SPORTS — Cabo Verde, Tier 3, 6 members
+- Xrootz — CV, Tier 3, 6 members
+- XT-Trainer — NG, Tier 3, 2 members
+- XTREME ESPORTS — Nigeria, Tier 3, 7 members
+- xXx E-SPORT — Nigeria, Tier 3, 1 members
+- xXx Esports — NG, Tier 3, 1 members
+- XXXXX — NG, Tier 3, 6 members
+- XYZ_EDGE — SN, Tier 3, 6 members
+- Yakuza era — NG, Tier 3, 8 members
+- YAKUZA ESPORTS — Nigeria, Tier 3, 6 members
+- YOUNG HUNTERS — Nigeria, Tier 3, 7 members
+- ZARAKI — NG, Tier 3, 5 members
+- ZAVIX E-SPORTS — ET, Tier 3, 5 members
+- ZEIR. — KE, Tier 3, 2 members
+- ZENITH GAMING — South Africa, Tier 3, 4 members
+- zerDragon — Nigeria, Tier 3, 1 members
+- Zero matrix — Nigeria, Tier 3, 5 members
+- ZULU BOYS — ZA, Tier 3, 1 members
+- ~LEGENDARY~ ESPORTS — Nigeria, Tier 3, 1 members
+- ʂʂ·Soul Societyᴥ ESPORT — Nigeria, Tier 3, 1 members
+- ࿌࿌OLAMD༒༒ (THE KINGS) — Nigeria, Tier 3, 1 members
+- ᴀʜ│ᴍᴀɴᴜᴇʟ ㅤ웃 — Nigeria, Tier 3, 1 members
+- ᴅɪᴠɪɴᴇ¹ᴄʜᴀᴏs — Nigeria, Tier 3, 3 members
+- ᴏɴʟʏᅠᴜs〄 — Nigeria, Tier 3, 1 members
+- ⚡LG¡N e-Sport — Nigeria, Tier 3, 6 members
+- 丅⁣乄ᏚႮᏢᎡᎬᎷᎬ乄豈 — Nigeria, Tier 3, 3 members
+- ＧＨＯＳＴ༒ＣＬＡＮ — Nigeria, Tier 3, 4 members
+- 𝙉𝙀𝙓𝙐𝙎 𝐞𝐒𝐩𝐨𝐫𝐭𝐬  ✞𓁋 — Nigeria, Tier 3, 2 members

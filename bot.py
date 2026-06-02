@@ -219,45 +219,16 @@ async def keep_typing(channel: discord.abc.Messageable, stop_event: asyncio.Even
 
 
 def _do_scrape() -> int:
-    """Synchronous scrape — runs in a thread executor. Returns total characters written."""
-    import requests
-    from bs4 import BeautifulSoup
+    """Synchronous scrape — runs in a thread executor. Returns total characters written.
 
-    BASE_URL = "https://africanfreefirecommunity.com"
-    PAGES = ["/home", "/about", "/rules", "/contact", "/terms-of-service",
-             "/privacy-policy", "/tournaments", "/teams", "/news", "/awards"]
-    HEADERS = {"User-Agent": "Mozilla/5.0 (AFC-Bot-Scraper/1.0)"}
-
-    sections = [
-        "============================",
-        "AFC KNOWLEDGE BASE",
-        f"Source: {BASE_URL}",
-        f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "============================\n",
-    ]
-
-    for path in PAGES:
-        url = BASE_URL + path
-        try:
-            res = requests.get(url, headers=HEADERS, timeout=10)
-            res.raise_for_status()
-            soup = BeautifulSoup(res.text, "html.parser")
-            for tag in soup(["nav", "footer", "script", "style", "img", "button"]):
-                tag.decompose()
-            main = soup.find("main") or soup.find("body")
-            if main:
-                lines = [l.strip() for l in main.get_text(separator="\n").splitlines() if l.strip()]
-                content = "\n".join(lines)
-                if content:
-                    sections.append(f"\n--- PAGE: {path} ---\n{content}\n")
-        except Exception as e:
-            print(f"⚠️  Scrape failed for {path}: {e}")
-
-    output = "\n".join(sections)
+    Delegates to afc_scraper (the single source of truth shared with
+    scripts/scrape_knowledge.py and scrape_site.py) so the three never drift. That
+    module crawls the site, drops client-render shells (/tournaments, /teams, /news
+    are Next.js client-rendered and would otherwise capture only "Loading..."), and
+    appends the live AFC teams directory from the API."""
+    import afc_scraper
     dest = os.path.join(BASE_DIR, "knowledge_base.txt")
-    with open(dest, "w", encoding="utf-8") as f:
-        f.write(output)
-    return len(output)
+    return afc_scraper.write_knowledge_base(dest)
 
 
 async def refresh_knowledge_base() -> int:

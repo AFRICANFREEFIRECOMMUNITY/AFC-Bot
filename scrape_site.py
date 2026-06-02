@@ -1,89 +1,36 @@
 """
-AFC Bot — Website Scraper
-==========================
-Run this script to re-scrape https://africanfreefirecommunity.com and
-refresh the knowledge_base.txt file the bot uses.
+AFC Bot — Website Scraper (manual run)
+======================================
+Thin wrapper around afc_scraper — the single source of truth shared with
+bot.py:_do_scrape() and scripts/scrape_knowledge.py. Run this to refresh the
+knowledge_base.txt the bot reads on every reply.
 
 Usage:
     python scrape_site.py
 """
 
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
+import os
+import sys
 
-BASE_URL = "https://africanfreefirecommunity.com"
+# Keep emoji prints from crashing a non-UTF-8 console (e.g. Windows cp1252).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
-PAGES = [
-    "/home",
-    "/about",
-    "/rules",
-    "/contact",
-    "/terms-of-service",
-    "/privacy-policy",
-    "/tournaments",
-    "/teams",
-    "/news",
-    "/awards",
-]
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (AFC-Bot-Scraper/1.0)"
-}
-
-
-def scrape_page(path: str) -> str:
-    url = BASE_URL + path
-    try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        res.raise_for_status()
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        # Remove nav, footer, script, style tags
-        for tag in soup(["nav", "footer", "script", "style", "img", "button"]):
-            tag.decompose()
-
-        # Get main content text
-        main = soup.find("main") or soup.find("body")
-        if main:
-            lines = [line.strip() for line in main.get_text(separator="\n").splitlines()]
-            lines = [l for l in lines if l]  # remove blank lines
-            return "\n".join(lines)
-        return ""
-    except Exception as e:
-        print(f"  ⚠️  Failed to scrape {url}: {e}")
-        return ""
+import afc_scraper  # noqa: E402
 
 
 def run():
-    print("🌐  Starting AFC website scrape...")
-    print(f"    Target: {BASE_URL}")
-    print(f"    Pages:  {len(PAGES)}\n")
-
-    sections = [
-        f"============================",
-        f"AFC KNOWLEDGE BASE",
-        f"Source: {BASE_URL}",
-        f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"============================\n",
-    ]
-
-    for path in PAGES:
-        print(f"  Scraping {path}...")
-        content = scrape_page(path)
-        if content:
-            sections.append(f"\n--- PAGE: {path} ---\n{content}\n")
-            print(f"  ✅  {path} — {len(content):,} characters")
-        else:
-            print(f"  ⏭️  {path} — empty/skipped")
-
-    output = "\n".join(sections)
-
-    with open("knowledge_base.txt", "w", encoding="utf-8") as f:
-        f.write(output)
-
-    print(f"\n✅  knowledge_base.txt updated — {len(output):,} total characters")
-    print("🔄  The bot will use the new content automatically on its next reply.")
+    print("🌐  Building AFC knowledge base (crawl pages + live teams directory)...")
+    print(f"    Target: {afc_scraper.SITE_BASE}\n")
+    dest = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_base.txt")
+    chars = afc_scraper.write_knowledge_base(dest)
+    if chars:
+        print(f"\n✅  knowledge_base.txt updated — {chars:,} total characters")
+        print("🔄  The bot will use the new content automatically on its next reply.")
+    else:
+        print("\n⚠️  Nothing written — site/API returned too little. Existing file kept.")
 
 
 if __name__ == "__main__":
