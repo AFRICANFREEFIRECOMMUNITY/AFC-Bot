@@ -2,7 +2,7 @@
 afc_scraper.py — single source of truth for building knowledge_base.txt.
 
 Used by all three entry points so they can never drift again:
-  - bot.py:_do_scrape()          live on the box, every SCRAPE_INTERVAL_HOURS (6h)
+  - bot.py:_do_scrape()          live on the box, every SCRAPE_INTERVAL_HOURS
   - scripts/scrape_knowledge.py  GitHub Action, every 3h, commits the repo copy
   - scrape_site.py               manual `python scrape_site.py`
 
@@ -16,9 +16,10 @@ Behavior:
     available". Capturing that pollutes the KB, so captures below MIN_CONTENT_CHARS
     or that are obvious placeholders are dropped. (/contact is short but real — it
     carries the support email + Discord — so the threshold keeps it.)
-  - Appends a live AFC TEAMS DIRECTORY pulled from the API (the /teams page is one of
-    those shells, so the roster has to come from api.../team/get-all-teams/). That
-    endpoint 500s intermittently (backend DB issue), so the fetch retries.
+
+NOTE: the AFC teams roster is NOT scraped into the KB. Embedding 560 teams in every
+reply's prompt was too heavy, so teams are served on demand via the bot's live tools
+(search_teams / get_team_members in bot.py), not from this file.
 """
 
 import os
@@ -29,7 +30,6 @@ import requests
 from bs4 import BeautifulSoup
 
 SITE_BASE = "https://africanfreefirecommunity.com"
-API_BASE = "https://api.africanfreefirecommunity.com"
 
 # Starting pages — the crawler also discovers linked pages automatically.
 SEED_PAGES = [
@@ -61,7 +61,6 @@ SHELL_MARKERS = ("Loading...", "No teams available")
 HEADERS = {"User-Agent": "AFC-Bot-Scraper/1.0"}
 HTTP_TIMEOUT = 15
 MAX_PAGES = 60            # crawl safety cap
-TEAMS_API_RETRIES = 5     # backend 500s ~40% of the time, so retry hard
 
 
 def _get(url, **kw):
@@ -115,49 +114,9 @@ def scrape_page(path: str):
         return "", set()
 
 
-def _fetch_all_teams() -> list:
-    """GET /team/get-all-teams/ — backend 500s intermittently (~40%), so retry."""
-    for attempt in range(1, TEAMS_API_RETRIES + 1):
-        try:
-            r = _get(f"{API_BASE}/team/get-all-teams/")
-            if r.status_code == 200:
-                return r.json().get("teams", []) or []
-            print(f"  ⚠️  teams API attempt {attempt}: HTTP {r.status_code}")
-        except Exception as e:
-            print(f"  ⚠️  teams API attempt {attempt}: {e}")
-    print("  ⏭️  teams API never returned 200 — skipping teams section this run")
-    return []
-
-
-def build_teams_section() -> str:
-    """Compact roster of every AFC team, pulled live from the API."""
-    teams = _fetch_all_teams()
-    if not teams:
-        return ""
-    active = [t for t in teams if not t.get("is_banned")]
-    banned = [t for t in teams if t.get("is_banned")]
-    lines = [
-        "\n--- AFC TEAMS DIRECTORY (live from API) ---",
-        f"Total registered teams: {len(teams)} — {len(active)} active, {len(banned)} banned.",
-        "One line per team: NAME [tag] — country, tier, members.",
-        "",
-    ]
-    for t in sorted(teams, key=lambda x: (x.get("team_name") or "").lower()):
-        name = (t.get("team_name") or "").strip()
-        if not name:
-            continue
-        tag = f" [{t['team_tag']}]" if t.get("team_tag") else ""
-        country = (t.get("country") or "").strip() or "—"
-        tier = t.get("team_tier") or "—"
-        mc = t.get("member_count")
-        members = f"{mc} members" if mc is not None else "members n/a"
-        flag = " [BANNED]" if t.get("is_banned") else ""
-        lines.append(f"- {name}{tag} — {country}, Tier {tier}, {members}{flag}")
-    return "\n".join(lines)
-
-
 def build_knowledge_text() -> str:
-    """Crawl the site + append the live teams directory. Returns the full KB text."""
+    """Crawl the site and return the full KB text. (Teams are NOT included — they
+    are served on demand by the bot's tools; see the module docstring.)"""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     sections = [
         "============================",
@@ -196,11 +155,6 @@ def build_knowledge_text() -> str:
             print(f"  ⏭️  {path} — client-render shell ({len(text)} chars), skipped")
         else:
             print(f"  ⏭️  {path} — empty/error")
-
-    teams_section = build_teams_section()
-    if teams_section:
-        sections.append(teams_section)
-        print(f"  🏷️  teams directory appended ({teams_section.count(chr(10))} lines)")
 
     print(f"  📄  pages captured: {captured} of {len(scraped)} crawled")
     return "\n".join(sections)

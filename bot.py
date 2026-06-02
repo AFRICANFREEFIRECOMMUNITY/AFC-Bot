@@ -1053,12 +1053,13 @@ You are smart, warm, and professional — like a knowledgeable friend who genuin
 5. Always include the most relevant link at the end of your answer
 6. If someone asks about something that "coming soon" or in development — say so honestly
 
-=== TEAM ROSTERS — WHO PLAYS FOR A TEAM ===
-The AFC TEAMS DIRECTORY below lists every team with its country, tier, and member COUNT — but NOT the individual players.
-When a user asks who is on a team, who the captain or owner is, or about a player's role, call the get_team_members tool with the EXACT team name as it appears in the directory, then answer from the live result.
-- Each member comes back with their username, in-game role (e.g. sniper, rusher, grenader), and management role (e.g. team_captain, member). Present them clearly — a short list works well.
-- If the tool says the team was not found, ask the user to confirm the exact team name (it must match the directory), or point them to <#{SUPPORT_CHANNEL_ID}>.
-- NEVER invent players, usernames, or roles. Only state what the tool returns.
+=== TEAMS — DIRECTORY & ROSTERS (use the live tools) ===
+The team list is NOT in this prompt. Use the live tools for anything about AFC teams:
+- To check whether a team exists, find teams by name, list teams in a country, or count how many teams are registered → call search_teams (optional query / country). It returns matching teams (name, country, tier, member count) plus the total number registered.
+- To get who PLAYS for a team (the roster) and their roles → call get_team_members with the exact team name. If unsure of the exact name, call search_teams first to find it.
+  Members come back with username, in-game role (e.g. sniper, rusher, grenader), and management role (e.g. team_captain, member). Present them as a short, clear list.
+- If a tool returns no match or is unavailable, ask the user to confirm the exact team name, or point them to <#{SUPPORT_CHANNEL_ID}>.
+- NEVER invent team names, players, usernames, counts, or roles. Only state what the tools return.
 
 === HANDLING VAGUE OR UNCLEAR MESSAGES ===
 When a message is vague, ambiguous, or missing key details — DO NOT ignore it and DO NOT guess.
@@ -1410,13 +1411,41 @@ TEAM_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "search_teams",
+            "description": (
+                "Search/list AFC registered teams. Use to check if a team exists, find "
+                "teams by name, list teams in a country, or count how many teams there "
+                "are. Returns matching teams (name, country, tier, member count, banned "
+                "flag) plus the total number of registered teams. Call with no arguments "
+                "to get the total count and a sample."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional team-name substring to match, e.g. 'dynasty'.",
+                    },
+                    "country": {
+                        "type": "string",
+                        "description": "Optional country filter, e.g. 'Nigeria'.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_team_members",
             "description": (
                 "Look up the current players/members of a specific AFC team and their "
                 "roles (in-game role like sniper/rusher/grenader, and management role "
                 "like team_captain/member). Use whenever a user asks who is on a team, "
                 "who the players/captain/owner of a team are, or anything about a team's "
-                "roster. Pass the exact team name as it appears in the AFC TEAMS DIRECTORY."
+                "roster. Pass the exact team name — if unsure of the exact name, call "
+                "search_teams first to find it."
             ),
             "parameters": {
                 "type": "object",
@@ -1429,7 +1458,7 @@ TEAM_TOOLS = [
                 "required": ["team_name"],
             },
         },
-    }
+    },
 ]
 
 
@@ -1470,6 +1499,80 @@ async def _lookup_team_members(team_name: str) -> str:
     }, ensure_ascii=False)
 
 
+# Cached AFC team directory (for search_teams). Refreshed lazily with a TTL so the
+# intermittently-failing teams API isn't hit on every query; the last good snapshot
+# is served if a refresh fails.
+_cached_all_teams: list = []
+_all_teams_ts: float = 0.0
+ALL_TEAMS_TTL_SECS = 900  # 15 min
+
+
+async def fetch_all_teams_api() -> list:
+    """GET /team/get-all-teams/ — backend 500s intermittently (~40%), so retry."""
+    url = f"{AFC_API_BASE}/team/get-all-teams/"
+    for _ in range(4):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data.get("teams", []) or []
+        except Exception as e:
+            print(f"⚠️  fetch_all_teams_api failed: {e}")
+    return []
+
+
+async def _get_all_teams_cached() -> list:
+    """Return the team directory, refreshing past the TTL. Serves the last good
+    snapshot if a refresh fails (resilient to the flaky backend)."""
+    global _cached_all_teams, _all_teams_ts
+    now = datetime.now(timezone.utc).timestamp()
+    if _cached_all_teams and (now - _all_teams_ts) < ALL_TEAMS_TTL_SECS:
+        return _cached_all_teams
+    teams = await fetch_all_teams_api()
+    if teams:
+        _cached_all_teams = teams
+        _all_teams_ts = now
+    return _cached_all_teams
+
+
+async def _search_teams(query: str = "", country: str = "") -> str:
+    """Tool impl — search/list AFC teams from the cached directory. Returns a JSON
+    string (results capped) plus the total registered-team count."""
+    teams = await _get_all_teams_cached()
+    if not teams:
+        return json.dumps({
+            "available": False,
+            "note": "The team list is temporarily unavailable (backend). Ask the user "
+                    "to try again shortly, or point them to support.",
+        })
+    q = (query or "").strip().lower()
+    c = (country or "").strip().lower()
+    matched = [
+        t for t in teams
+        if (not q or q in (t.get("team_name") or "").lower())
+        and (not c or c in (t.get("country") or "").lower())
+    ]
+    matched.sort(key=lambda t: (t.get("team_name") or "").lower())
+    capped = matched[:30]
+    return json.dumps({
+        "available": True,
+        "total_teams_registered": len(teams),
+        "matches": len(matched),
+        "showing": len(capped),
+        "teams": [
+            {
+                "team_name": t.get("team_name"),
+                "country": t.get("country"),
+                "tier": t.get("team_tier"),
+                "members": t.get("member_count"),
+                "is_banned": bool(t.get("is_banned")),
+            }
+            for t in capped
+        ],
+    }, ensure_ascii=False)
+
+
 async def _dispatch_tool(name: str, arguments: str) -> str:
     """Execute a tool call requested by GPT and return its result as a string."""
     try:
@@ -1478,6 +1581,11 @@ async def _dispatch_tool(name: str, arguments: str) -> str:
         args = {}
     if name == "get_team_members":
         return await _lookup_team_members(str(args.get("team_name", "")).strip())
+    if name == "search_teams":
+        return await _search_teams(
+            str(args.get("query", "")).strip(),
+            str(args.get("country", "")).strip(),
+        )
     return json.dumps({"error": f"unknown tool: {name}"})
 
 
