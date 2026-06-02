@@ -71,8 +71,10 @@ MODERATION_SUPPORT_CHANNEL_ID = 1026913984923840542
 # Channel where auto-generated news announcements are posted
 NEWS_ANNOUNCEMENT_CHANNEL_ID = 1306247327840731157
 
-# How often to auto-refresh the knowledge base (hours)
-SCRAPE_INTERVAL_HOURS = 6
+# How often to auto-refresh the knowledge base (hours). 4h balances fresh team
+# roster / new pages against load on the flaky teams API; the fast-changing data
+# (tournaments/news/bans) is already near-instant via the 120s poll loops below.
+SCRAPE_INTERVAL_HOURS = 4
 
 # How often to poll the backend for new events/bans/news (seconds)
 NEWS_POLL_INTERVAL_SECS    = 120   # every 2 minutes
