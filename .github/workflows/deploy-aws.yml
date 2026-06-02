@@ -40,6 +40,18 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
-            -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
-            'sudo bash /home/ubuntu/AFC-Bot/deploy/oracle/setup.sh --update'
+          # GitHub-hosted runners connect from a large, rotating IP pool, and the
+          # box can be briefly unreachable on port 22 (reboot, restart, SG churn).
+          # A single transient timeout used to fail the whole deploy, so retry.
+          for attempt in 1 2 3; do
+            if ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+                 -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
+                 'sudo bash /home/ubuntu/AFC-Bot/deploy/oracle/setup.sh --update'; then
+              echo "Deploy succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "::warning::SSH/deploy attempt $attempt failed; retrying in 15s..."
+            sleep 15
+          done
+          echo "::error::Deploy failed after 3 SSH attempts. Check port 22 reachability from GitHub runners and the EC2_HOST / EC2_SSH_KEY secrets (see deploy/aws/README.md §Troubleshooting)."
+          exit 1
