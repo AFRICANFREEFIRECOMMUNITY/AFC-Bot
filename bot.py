@@ -1053,6 +1053,13 @@ You are smart, warm, and professional — like a knowledgeable friend who genuin
 5. Always include the most relevant link at the end of your answer
 6. If someone asks about something that "coming soon" or in development — say so honestly
 
+=== TEAM ROSTERS — WHO PLAYS FOR A TEAM ===
+The AFC TEAMS DIRECTORY below lists every team with its country, tier, and member COUNT — but NOT the individual players.
+When a user asks who is on a team, who the captain or owner is, or about a player's role, call the get_team_members tool with the EXACT team name as it appears in the directory, then answer from the live result.
+- Each member comes back with their username, in-game role (e.g. sniper, rusher, grenader), and management role (e.g. team_captain, member). Present them clearly — a short list works well.
+- If the tool says the team was not found, ask the user to confirm the exact team name (it must match the directory), or point them to <#{SUPPORT_CHANNEL_ID}>.
+- NEVER invent players, usernames, or roles. Only state what the tool returns.
+
 === HANDLING VAGUE OR UNCLEAR MESSAGES ===
 When a message is vague, ambiguous, or missing key details — DO NOT ignore it and DO NOT guess.
 Instead, ask a short, friendly clarifying question to understand what they need. Examples:
@@ -1393,6 +1400,128 @@ def build_embed(data: dict) -> tuple[discord.Embed, str]:
     return embed, ping_content
 
 
+# ── Tool-calling: live team roster lookup ─────────────────────────────────────
+# GPT-4o can call get_team_members to fetch a specific team's players + roles from
+# the API on demand. The always-on knowledge base only carries the team *directory*
+# (names, countries, member counts); individual rosters are too large to embed for
+# all teams, so they're fetched live only when a user actually asks. The teams API
+# 500s intermittently, so the fetch retries.
+TEAM_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_team_members",
+            "description": (
+                "Look up the current players/members of a specific AFC team and their "
+                "roles (in-game role like sniper/rusher/grenader, and management role "
+                "like team_captain/member). Use whenever a user asks who is on a team, "
+                "who the players/captain/owner of a team are, or anything about a team's "
+                "roster. Pass the exact team name as it appears in the AFC TEAMS DIRECTORY."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "team_name": {
+                        "type": "string",
+                        "description": "Exact team name, e.g. 'V-ENT ESPORTS'.",
+                    }
+                },
+                "required": ["team_name"],
+            },
+        },
+    }
+]
+
+
+async def _lookup_team_members(team_name: str) -> str:
+    """Tool impl — fetch a team's roster + roles from the API (retries through the
+    flaky backend). Returns a JSON string for the model. Excludes member PII
+    (uid / discord_id) so it can never land in a public reply."""
+    team = None
+    for _ in range(4):
+        team = await fetch_team_details(team_name)
+        if team:
+            break
+    if not team:
+        return json.dumps({
+            "found": False,
+            "team_name": team_name,
+            "note": "No team found by that exact name, or the team API is temporarily "
+                    "unavailable. Ask the user to confirm the exact team name, or point "
+                    "them to support.",
+        })
+    members = [
+        {
+            "username": (m.get("username") or "").strip(),
+            "management_role": m.get("management_role") or None,
+            "in_game_role": m.get("in_game_role") or None,
+        }
+        for m in (team.get("members") or [])
+    ]
+    return json.dumps({
+        "found": True,
+        "team_name": team.get("team_name", team_name),
+        "country": team.get("country"),
+        "tier": team.get("team_tier"),
+        "owner": team.get("team_owner"),
+        "total_members": team.get("total_members", len(members)),
+        "is_banned": bool(team.get("is_banned")),
+        "members": members,
+    }, ensure_ascii=False)
+
+
+async def _dispatch_tool(name: str, arguments: str) -> str:
+    """Execute a tool call requested by GPT and return its result as a string."""
+    try:
+        args = json.loads(arguments or "{}")
+    except Exception:
+        args = {}
+    if name == "get_team_members":
+        return await _lookup_team_members(str(args.get("team_name", "")).strip())
+    return json.dumps({"error": f"unknown tool: {name}"})
+
+
+async def _run_chat(messages: list, allow_tools: bool = True) -> str:
+    """Run a GPT-4o completion, resolving any tool calls, and return the final text.
+    Tool round-trip messages stay local to this call so they never pollute the
+    persisted channel history."""
+    convo = list(messages)
+    for _round in range(4):
+        kwargs = {
+            "model": "gpt-4o",
+            "messages": convo,
+            "max_tokens": 1024,
+            "temperature": 0.7,
+        }
+        if allow_tools:
+            kwargs["tools"] = TEAM_TOOLS
+            kwargs["tool_choice"] = "auto"
+        msg = client_ai.chat.completions.create(**kwargs).choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not tool_calls:
+            return (msg.content or "").strip()
+        convo.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ],
+        })
+        for tc in tool_calls:
+            result = await _dispatch_tool(tc.function.name, tc.function.arguments)
+            convo.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+    # Tool rounds exhausted — force a final answer with no further tools.
+    msg = client_ai.chat.completions.create(
+        model="gpt-4o", messages=convo, max_tokens=1024, temperature=0.7
+    ).choices[0].message
+    return (msg.content or "").strip()
+
+
 async def ask_openai_text(channel_id: int, user_text: str, username: str, is_staff: bool = False) -> tuple[str, bool]:
     """Standard text reply via GPT-4o. Returns (reply_text, needs_support_redirect)."""
     msgs = get_channel_messages(channel_id)
@@ -1402,17 +1531,7 @@ async def ask_openai_text(channel_id: int, user_text: str, username: str, is_sta
     trim_history(channel_id)
     touch_channel(channel_id)
 
-    response = client_ai.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            *msgs,
-        ],
-        max_tokens=1024,
-        temperature=0.7,
-    )
-
-    raw = response.choices[0].message.content.strip()
+    raw = await _run_chat([{"role": "system", "content": system_prompt}, *msgs])
 
     # Check if bot flagged this as needing support
     needs_support = "---SUPPORT_REDIRECT---" in raw
@@ -1448,18 +1567,11 @@ async def ask_openai_with_image(channel_id: int, user_text: str, username: str, 
         ]
     }
 
-    response = client_ai.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            *msgs,
-            vision_message,
-        ],
-        max_tokens=1024,
-        temperature=0.7,
-    )
-
-    reply = response.choices[0].message.content.strip()
+    reply = await _run_chat([
+        {"role": "system", "content": system_prompt},
+        *msgs,
+        vision_message,
+    ])
     msgs = get_channel_messages(channel_id)
     msgs.append({"role": "user", "content": f"{username}: [sent an image] {user_text}"})
     msgs.append({"role": "assistant", "content": reply})
