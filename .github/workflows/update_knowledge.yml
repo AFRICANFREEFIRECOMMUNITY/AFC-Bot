@@ -5,6 +5,11 @@ on:
     - cron: '0 */3 * * *'  # Every 3 hours
   workflow_dispatch:         # Also allows manual trigger from GitHub
 
+# Grant the GITHUB_TOKEN write access so the final "git push" can land the
+# auto-scrape commit. Without this the token is read-only and push 403s.
+permissions:
+  contents: write
+
 jobs:
   scrape-and-update:
     runs-on: ubuntu-latest
