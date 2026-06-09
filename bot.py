@@ -429,12 +429,16 @@ async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
     registered = event.get("total_registered_competitors", 0)
     banner_url = event.get("event_banner")
     slug       = event.get("slug", "")
+    # Organizer of the event. AFC-run events have no organization on the record,
+    # so they're attributed to the community itself.
+    organizer  = event.get("organization_name") or "African Freefire Community"
     event_url  = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else "https://africanfreefirecommunity.com/tournaments"
 
     is_scrim = comp_type.lower() == "scrims"
     color    = 0xFFD700 if is_scrim else 0x00A550
 
     lines = []
+    lines.append(f"🏢 **Organizer:** {organizer}")
     if start_date: lines.append(f"📅 **Date:** {start_date}")
     if prizepool:  lines.append(f"💰 **Prize Pool:** {prizepool}")
     if max_slots:  lines.append(f"👥 **Slots:** {registered}/{max_slots}")
@@ -501,7 +505,9 @@ def _build_status_change_embed(event: dict, old_status: str, new_status: str) ->
         icon, color = "🔄", 0x3498DB
         title = f"{'🎮 Scrim' if is_scrim else '🏆 Tournament'} Update: {name}"
 
+    organizer = event.get("organization_name") or "African Freefire Community"
     description = f"{icon} Status changed: **{old_status}** → **{new_status}**"
+    description += f"\n🏢 Organizer: **{organizer}**"
     if event_url:
         description += f"\n\n🔗 **[View Event →]({event_url})**"
 
@@ -535,7 +541,7 @@ async def event_poll_loop():
             if e.get("event_type") == "external":
                 continue
             eid = str(e["event_id"])
-            status = e.get("status", "")
+            status = e.get("event_status", "")
             if status:
                 event_statuses[eid] = status
         _save_event_statuses(event_statuses)
@@ -568,7 +574,7 @@ async def event_poll_loop():
                     seen.add(str(event["event_id"]))
                     # Seed the status so we don't also fire a status-change for new events
                     eid = str(event["event_id"])
-                    event_statuses[eid] = event.get("status", "")
+                    event_statuses[eid] = event.get("event_status", "")
                     print(f"🎮  Announced event: {event.get('event_name')}")
                     await asyncio.sleep(2)
                 except Exception as e:
@@ -584,10 +590,18 @@ async def event_poll_loop():
                 if event.get("event_type") == "external":
                     continue
                 eid = str(event.get("event_id"))
-                new_status = event.get("status", "")
+                new_status = event.get("event_status", "")
                 old_status = event_statuses.get(eid, "")
 
                 if not new_status or new_status == old_status:
+                    continue
+
+                # First real status we've recorded for this event (e.g. it was
+                # tracked with an empty status before event_status was read) —
+                # seed it silently so we don't announce a change we never saw.
+                if not old_status:
+                    event_statuses[eid] = new_status
+                    statuses_changed = True
                     continue
 
                 # Status changed — announce it
@@ -989,7 +1003,7 @@ def format_live_events() -> str:
     for ev in _cached_events:
         name       = ev.get("event_name", "Unknown")
         comp_type  = ev.get("competition_type", "tournament")
-        status     = ev.get("status", "unknown")
+        status     = ev.get("event_status", "unknown")
         start_date = ev.get("event_date", "TBD")
         start_time = ev.get("event_time", "")
         prizepool  = ev.get("prizepool", "")
