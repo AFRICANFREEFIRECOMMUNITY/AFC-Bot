@@ -1118,6 +1118,12 @@ DO NOT use the hard escalation marker for general "how do I…" questions you ca
 - If someone is angry — calm, acknowledge, then help
 - Never end responses with follow-up offers like "let me know if you need anything else", "feel free to ask", "hope that helps", "is there anything else I can help with" — just answer and stop
 
+=== LINK FORMATTING — CRITICAL, NEVER VIOLATE ===
+- Write every link as a plain raw URL, e.g. https://africanfreefirecommunity.com/a/player-markets
+- NEVER use markdown link syntax — no [text](url), no [url](url), and never a space between ] and (
+- NEVER wrap a URL in square brackets or parentheses, and NEVER write the same URL twice in a row
+- A raw URL on its own auto-links in Discord; anything wrapped around it breaks the link
+
 === DISCORD LINK RULE — CRITICAL, NEVER VIOLATE ===
 - The ONLY valid AFC Discord invite is: {AFC_DISCORD_INVITE}
 - NEVER write "discord.gg/afc", "discord.gg/african-freefire-community", or ANY other Discord URL
@@ -1603,6 +1609,20 @@ async def _dispatch_tool(name: str, arguments: str) -> str:
     return json.dumps({"error": f"unknown tool: {name}"})
 
 
+# GPT sometimes emits broken markdown links that Discord renders as raw text,
+# e.g. "[https://url] (https://url)". Normalize them before the reply is sent.
+_URL_LABEL_LINK_RE = re.compile(r"\[\s*<?(https?://[^\s\]>]+)>?\s*\]\s*\(\s*<?https?://[^\s)>]+>?\s*\)")
+_SPACED_MD_LINK_RE = re.compile(r"\[([^\[\]\n]+)\][ \t]+\((https?://[^\s)]+)\)")
+
+
+def _normalize_links(text: str) -> str:
+    """Collapse [url](url)-style links to the bare URL and close the space in
+    "[label] (url)" so the masked link renders instead of showing raw brackets."""
+    text = _URL_LABEL_LINK_RE.sub(r"\1", text)
+    text = _SPACED_MD_LINK_RE.sub(r"[\1](\2)", text)
+    return text
+
+
 async def _run_chat(messages: list, allow_tools: bool = True) -> str:
     """Run a GPT-4o completion, resolving any tool calls, and return the final text.
     Tool round-trip messages stay local to this call so they never pollute the
@@ -1621,7 +1641,7 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
         msg = client_ai.chat.completions.create(**kwargs).choices[0].message
         tool_calls = getattr(msg, "tool_calls", None)
         if not tool_calls:
-            return (msg.content or "").strip()
+            return _normalize_links((msg.content or "").strip())
         convo.append({
             "role": "assistant",
             "content": msg.content or "",
@@ -1641,7 +1661,7 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
     msg = client_ai.chat.completions.create(
         model="gpt-4o", messages=convo, max_tokens=1024, temperature=0.7
     ).choices[0].message
-    return (msg.content or "").strip()
+    return _normalize_links((msg.content or "").strip())
 
 
 async def ask_openai_text(channel_id: int, user_text: str, username: str, is_staff: bool = False) -> tuple[str, bool]:
