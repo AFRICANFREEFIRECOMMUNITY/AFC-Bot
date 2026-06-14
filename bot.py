@@ -984,7 +984,9 @@ def compute_time_status(event: dict) -> tuple[str, str]:
     if delta > 0:
         mins = max(1, int(delta // 60))
         return "starting_soon", f"scheduled in ~{mins} minute(s)"
-    return "date_passed", f"listed date {start_dt.strftime('%Y-%m-%d %H:%M UTC')} has passed — check website status for whether the event is live, ended, or still running"
+    days_ago = int((-delta) // 86400)
+    ago = f"{days_ago} day(s) ago" if days_ago >= 1 else "earlier today"
+    return "date_passed", f"listed date {start_dt.strftime('%Y-%m-%d')} was {ago} — check website status for whether the event is live, ended, or still running"
 
 
 def format_live_events() -> str:
@@ -1012,6 +1014,8 @@ def format_live_events() -> str:
         slug       = ev.get("slug", "")
         url        = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else ""
 
+        time_kw, time_note = compute_time_status(ev)
+
         entry = f"• {name} ({comp_type})"
         if status:       entry += f" — Website status: {status}"
         if start_date:   entry += f" — Date: {start_date}"
@@ -1019,6 +1023,10 @@ def format_live_events() -> str:
         if prizepool:    entry += f" — Prize: {prizepool}"
         if max_slots:    entry += f" — Slots: {registered}/{max_slots}"
         if url:          entry += f"\n  Link: {url}"
+        if time_note:
+            entry += f"\n  ⏱️ Time check: {time_note}"
+            if time_kw == "date_passed":
+                entry += " — do NOT present this as an upcoming/registerable tournament unless the Website status explicitly says registration is open"
         lines.append(entry)
 
     return "\n".join(lines)
@@ -1137,6 +1145,7 @@ DO NOT use the hard escalation marker for general "how do I…" questions you ca
 - If the website status is "completed", "ended", or "finished" → tell the user it has finished
 - If the website status is "pending", "upcoming", or "registration_open" → tell the user registration is open / it hasn't started yet, and share the listed date
 - If the listed date has passed but the website status is still "pending"/"registration_open"/etc., DO NOT assume the event ended. Tell the user the listed date has passed but the official status hasn't updated, and suggest they check the event page or ask staff
+- If a user asks whether there are any UPCOMING tournaments/scrims they can register for, judge each event by its ⏱️ Time check note, NOT just its Website status: an event only counts as genuinely open if its listed date is still in the future, OR its Website status explicitly shows registration is open. If EVERY listed event's date has already passed AND none of them shows an explicit open-registration status, do NOT answer "yes, here are upcoming tournaments" — instead tell the user honestly that the listed tournaments' dates have already passed and there don't appear to be any open for registration right now, and point them to https://africanfreefirecommunity.com/tournaments and <#{SUPPORT_CHANNEL_ID}> to confirm. NEVER list past-date events as if registration were open
 - When answering "what time" / "when does it start" questions, give the EXACT date and time from the LIVE EVENT DATA — never make one up. If no time is set, say so honestly. Make clear this is the listed event date, not necessarily the exact match start.
 - If someone asks about the status of THEIR registration (e.g. "still pending"), do NOT tell them how to check on the platform from scratch — acknowledge the issue, explain that pending teams are reviewed by admins, and escalate to support so a human can verify their entry.
 
