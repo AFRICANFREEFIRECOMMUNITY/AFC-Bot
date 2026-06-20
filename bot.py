@@ -697,10 +697,12 @@ def save_seen_ban_activities(seen: set):
 
 
 def make_activity_key(activity: dict) -> str:
-    """Stable unique key for a ban activity (no ID field in the API response)."""
+    """Stable unique key for a ban activity (no ID field in the API response).
+    Uses the FULL description — truncating it let two distinct bans that share a
+    timestamp + action collide on the same prefix and get silently dropped."""
     ts   = str(activity.get("timestamp", ""))
     act  = activity.get("action", "")
-    desc = (activity.get("description") or "")[:60]
+    desc = activity.get("description") or ""
     return f"{ts}|{act}|{desc}"
 
 
@@ -821,8 +823,9 @@ async def build_ban_embed(parsed: dict) -> discord.Embed:
 
     # Robustness: if the backend changed its description wording and parsing missed
     # the name, include the raw activity text so the announcement never loses info.
-    if not name_known and parsed.get("raw"):
-        embed.add_field(name="Details", value=parsed["raw"][:1024], inline=False)
+    if not name_known:
+        details = parsed.get("raw") or f"(unparsed {parsed.get('action', 'ban')} activity)"
+        embed.add_field(name="Details", value=details[:1024], inline=False)
 
     if parsed.get("admin"):
         embed.add_field(name="Action by", value=parsed["admin"], inline=True)
@@ -863,7 +866,12 @@ async def ban_poll_loop():
     # anything. If the API is down at boot we must NOT seed an empty set — that would
     # make every existing ban look "new" and re-spam the channel once the API recovers.
     seen   = load_seen_ban_activities()
-    seeded = bool(seen)   # a non-empty set loaded from disk means we already seeded
+    # File existence is the durable "already seeded" sentinel. bool(seen) was wrong:
+    # a legitimate empty seed (zero bans at first poll) writes [] to disk, and on
+    # the next restart that empty set would look "never seeded" — dropping back into
+    # seed mode and silently swallowing any ban created in the meantime. The file
+    # exists after the first seed regardless of contents, so a restart never re-seeds.
+    seeded = os.path.exists(SEEN_BAN_ACTIVITIES_FILE)
 
     while not bot.is_closed():
         await asyncio.sleep(BAN_POLL_INTERVAL_SECS)
@@ -897,13 +905,14 @@ async def ban_poll_loop():
 
                     key = make_activity_key(activity)
                     seen.add(key)
+                    # Persist immediately after each send — saving once after the
+                    # whole batch let a crash/restart mid-batch (e.g. a deploy
+                    # SIGTERM during the sleep below) re-announce already-sent bans.
+                    save_seen_ban_activities(seen)
                     print(f"🔨  Ban announcement: {activity.get('action')} — {parsed['name']}")
                     await asyncio.sleep(1)
                 except Exception as e:
                     print(f"⚠️  Failed to post ban activity: {e}")
-
-            if new_bans:
-                save_seen_ban_activities(seen)
 
         except Exception as e:
             print(f"⚠️  ban_poll_loop error: {e}")
