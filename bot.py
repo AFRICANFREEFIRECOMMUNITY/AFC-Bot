@@ -7,7 +7,7 @@ import aiohttp
 import json
 import asyncio
 from datetime import datetime, timezone
-from openai import OpenAI, RateLimitError, APIStatusError
+from openai import OpenAI, RateLimitError, APIStatusError, APIConnectionError, APITimeoutError
 from dotenv import load_dotenv
 import base64
 
@@ -1694,21 +1694,39 @@ def _is_quota_or_rate_error(exc: Exception) -> bool:
     )
 
 
+def _should_failover(exc: Exception) -> bool:
+    """Whether the primary provider is unusable and we should fail over to the
+    backup. Covers quota/rate (429) AND general unavailability — server errors
+    (5xx outages), network down / timeouts, and auth failures (401/403, e.g. a
+    dead or revoked key). Excludes client-side request bugs (400 bad request)
+    that a different provider can't fix anyway."""
+    if _is_quota_or_rate_error(exc):
+        return True
+    if isinstance(exc, (APIConnectionError, APITimeoutError)):
+        return True
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if isinstance(status, int) and (status >= 500 or status in (401, 403)):
+        return True
+    return False
+
+
 def _chat_completion(**kwargs):
     """Create a chat completion on the primary provider, failing over to the
-    configured fallback provider on quota/rate errors. Re-raises if there is no
-    fallback, the error isn't quota/rate related, or the fallback also fails."""
+    configured fallback provider when the primary is unusable (quota/rate, 5xx
+    outage, network/timeout, dead key). Re-raises if there is no fallback, the
+    error isn't failover-eligible (e.g. a 400 bad request), or the fallback also
+    fails."""
     try:
         return client_ai.chat.completions.create(**kwargs)
     except Exception as exc:
-        if client_fallback is None or not _is_quota_or_rate_error(exc):
+        if client_fallback is None or not _should_failover(exc):
             raise
         fb_kwargs = dict(kwargs)
         fb_kwargs["model"] = (
             FALLBACK_MINI_MODEL if kwargs.get("model") == "gpt-4o-mini" else FALLBACK_MODEL
         )
         print(
-            f"⚠️  Primary AI quota/rate error ({exc}) — failing over to fallback "
+            f"⚠️  Primary AI unavailable ({exc}) — failing over to fallback "
             f"provider (model={fb_kwargs['model']})"
         )
         try:
@@ -1741,8 +1759,10 @@ def resolve_ai_error_reply(channel_id: int, exc: Exception, force: bool = False)
     notice was already sent to this channel recently — caller should stay quiet.
     Pass force=True to bypass the throttle (explicit @mentions and paths that
     already acknowledged the user must always get an answer, never silence)."""
-    if _is_quota_or_rate_error(exc):
-        print(f"⚠️  AI quota/rate error: {exc}")
+    # AI unavailable (quota/rate, outage, timeout, dead key) — and either no
+    # fallback or the fallback also failed. Show the clean "down" notice.
+    if _should_failover(exc):
+        print(f"⚠️  AI unavailable: {exc}")
         if force or _should_send_down_notice(channel_id):
             return AI_DOWN_NOTICE
         return None
@@ -2963,10 +2983,10 @@ async def _handle_message(message: discord.Message):
             except discord.Forbidden:
                 await message.reply("❌ I don't have permission to edit that message.", mention_author=True)
             except Exception as e:
-                # ai_rewrite() runs through _chat_completion, so a quota/rate error
-                # can surface here — never dump the raw OpenAI billing error.
-                if _is_quota_or_rate_error(e):
-                    print(f"⚠️  AI quota/rate error during edit: {e}")
+                # ai_rewrite() runs through _chat_completion, so an AI-unavailability
+                # error can surface here — never dump the raw OpenAI billing error.
+                if _should_failover(e):
+                    print(f"⚠️  AI unavailable during edit: {e}")
                     await message.reply(AI_DOWN_NOTICE, mention_author=True)
                 else:
                     await message.reply(f"⚠️ Couldn't edit the message. Error: {e}", mention_author=True)
