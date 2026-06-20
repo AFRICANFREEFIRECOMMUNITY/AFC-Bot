@@ -86,6 +86,9 @@ Type=simple
 User=${APP_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
+# Unbuffered stdout so the bot's print() diagnostics (failover, ⚠️ warnings,
+# poll-loop status) reach journald immediately instead of sitting in a buffer.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=${VENV_DIR}/bin/python ${APP_DIR}/bot.py
 Restart=always
 RestartSec=5
