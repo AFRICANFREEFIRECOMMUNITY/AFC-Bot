@@ -704,19 +704,35 @@ def make_activity_key(activity: dict) -> str:
     return f"{ts}|{act}|{desc}"
 
 
-async def fetch_admin_activities() -> list:
-    """Call the AFC API and return the latest admin activity records."""
+async def fetch_admin_activities() -> list | None:
+    """Call the AFC API and return the latest admin activity records.
+
+    Returns None when the call FAILED (5xx, timeout, network, bad JSON) so callers
+    can distinguish a real failure from a genuinely empty list — important so a
+    transient outage never seeds an empty seen-set (which would re-spam every old
+    ban on recovery) or gets mistaken for "no activity". The AFC API is known to
+    intermittently 5xx, so transient server errors are retried with backoff."""
     url = f"{AFC_API_BASE}/auth/get-admin-activities/"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    return []
-                data = await resp.json()
-                return data.get("admin_activities", [])
-    except Exception as e:
-        print(f"⚠️  fetch_admin_activities failed: {e}")
-        return []
+    for attempt in range(3):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data.get("admin_activities", [])
+                    if resp.status >= 500 and attempt < 2:
+                        print(f"⚠️  admin-activities HTTP {resp.status} (attempt {attempt + 1}/3) — retrying")
+                        await asyncio.sleep(2 * (attempt + 1))
+                        continue
+                    print(f"⚠️  admin-activities returned HTTP {resp.status}")
+                    return None
+        except Exception as e:
+            print(f"⚠️  fetch_admin_activities failed (attempt {attempt + 1}/3): {e}")
+            if attempt < 2:
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            return None
+    return None
 
 
 def parse_ban_activity(activity: dict) -> dict:
@@ -741,6 +757,7 @@ def parse_ban_activity(activity: dict) -> dict:
         "reason":      "No reason provided",
         "duration":    "",
         "admin":       admin,
+        "raw":         desc,   # kept so the embed can fall back to it if parsing misses
     }
 
     # Extract entity name — everything between "Team/Player " and " (ID:"
@@ -793,15 +810,25 @@ async def build_ban_embed(parsed: dict) -> discord.Embed:
     title = f"🔨 {label} Banned" if is_ban else f"✅ {label} Unbanned"
     color = 0xFF4444 if is_ban else 0x00A550
 
+    name_known = parsed["name"] != "Unknown"
+
     embed = discord.Embed(title=title, color=color)
-    embed.add_field(name=label,        value=parsed["name"],   inline=True)
+    embed.add_field(name=label, value=parsed["name"] if name_known else "(see details below)", inline=True)
     if is_ban and parsed.get("duration"):
-        embed.add_field(name="Duration",   value=parsed["duration"], inline=True)
-    if is_ban:
-        embed.add_field(name="Reason",     value=parsed["reason"], inline=False)
+        embed.add_field(name="Duration", value=parsed["duration"], inline=True)
+    if is_ban and parsed.get("reason") and parsed["reason"] != "No reason provided":
+        embed.add_field(name="Reason", value=parsed["reason"], inline=False)
+
+    # Robustness: if the backend changed its description wording and parsing missed
+    # the name, include the raw activity text so the announcement never loses info.
+    if not name_known and parsed.get("raw"):
+        embed.add_field(name="Details", value=parsed["raw"][:1024], inline=False)
+
+    if parsed.get("admin"):
+        embed.add_field(name="Action by", value=parsed["admin"], inline=True)
 
     # For team bans/unbans — fetch logo and member list
-    if entity_type == "team" and parsed["name"] != "Unknown":
+    if entity_type == "team" and name_known:
         team = await fetch_team_details(parsed["name"])
         if team:
             # Team logo as thumbnail
@@ -832,21 +859,33 @@ async def ban_poll_loop():
     """Background task — polls admin activities for ban/unban events every BAN_POLL_INTERVAL_SECS."""
     await bot.wait_until_ready()
 
-    # On first boot, seed from existing activities so we don't re-announce old bans.
-    seen = load_seen_ban_activities()
-    if not seen:
-        activities = await fetch_admin_activities()
-        ban_acts   = [a for a in activities if a.get("action") in BAN_ACTIONS]
-        seen       = {make_activity_key(a) for a in ban_acts}
-        save_seen_ban_activities(seen)
-        print(f"🔨  Ban poll: seeded {len(seen)} existing ban record(s). Watching for new ones.")
+    # Seed-on-first-SUCCESS: populate `seen` from a successful poll before announcing
+    # anything. If the API is down at boot we must NOT seed an empty set — that would
+    # make every existing ban look "new" and re-spam the channel once the API recovers.
+    seen   = load_seen_ban_activities()
+    seeded = bool(seen)   # a non-empty set loaded from disk means we already seeded
 
     while not bot.is_closed():
         await asyncio.sleep(BAN_POLL_INTERVAL_SECS)
         try:
             activities = await fetch_admin_activities()
-            ban_acts   = [a for a in activities if a.get("action") in BAN_ACTIONS]
-            new_bans   = [a for a in ban_acts if make_activity_key(a) not in seen]
+            if activities is None:
+                # API unavailable this cycle — skip without touching state so any
+                # ban is detected (not lost, not duplicated) on a later good poll.
+                continue
+
+            ban_acts = [a for a in activities if a.get("action") in BAN_ACTIONS]
+
+            if not seeded:
+                # First successful poll — mark current bans as already-seen (don't
+                # announce the backlog) and start watching for new ones from here.
+                seen = {make_activity_key(a) for a in ban_acts}
+                save_seen_ban_activities(seen)
+                seeded = True
+                print(f"🔨  Ban poll: seeded {len(seen)} existing ban record(s) on first successful poll. Watching for new ones.")
+                continue
+
+            new_bans = [a for a in ban_acts if make_activity_key(a) not in seen]
 
             for activity in reversed(new_bans):
                 try:
