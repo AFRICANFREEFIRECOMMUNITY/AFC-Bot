@@ -7,7 +7,7 @@ import aiohttp
 import json
 import asyncio
 from datetime import datetime, timezone
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, APIStatusError
 from dotenv import load_dotenv
 import base64
 
@@ -16,6 +16,22 @@ load_dotenv()
 # ── Config ───────────────────────────────────────────────────────────────────
 DISCORD_TOKEN  = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# ── Optional fallback AI provider ─────────────────────────────────────────────
+# Any OpenAI-compatible API works as a backup (Groq, OpenRouter, DeepSeek,
+# Together, a second OpenAI key, a local Ollama, etc.). When the primary
+# provider runs out of quota or gets rate-limited (HTTP 429 / insufficient_quota),
+# chat completions automatically retry here so the bot keeps answering instead
+# of going dark. Leave these unset to disable failover — the bot then shows a
+# clean "AI temporarily unavailable" notice instead of a raw error.
+#   FALLBACK_API_KEY   – the backup provider's API key
+#   FALLBACK_BASE_URL  – its OpenAI-compatible endpoint, e.g. https://api.groq.com/openai/v1
+#   FALLBACK_MODEL     – model for normal replies   (default: llama-3.3-70b-versatile)
+#   FALLBACK_MINI_MODEL– model for the cheap classifier (defaults to FALLBACK_MODEL)
+FALLBACK_API_KEY    = os.getenv("FALLBACK_API_KEY")
+FALLBACK_BASE_URL   = os.getenv("FALLBACK_BASE_URL")
+FALLBACK_MODEL      = os.getenv("FALLBACK_MODEL", "llama-3.3-70b-versatile")
+FALLBACK_MINI_MODEL = os.getenv("FALLBACK_MINI_MODEL", FALLBACK_MODEL)
 
 ALLOWED_CHANNELS = [
     920726991089598476,
@@ -58,6 +74,26 @@ SUPPORT_ROLES = [
     920734300222128198,
     920732760094703746,
 ]
+
+# ── User-facing notices when the AI backend is unavailable ────────────────────
+# Shown INSTEAD of a raw OpenAI exception so users never see "Error: 429 ...
+# insufficient_quota ... check your plan and billing" or a billing link. The real
+# error is still printed to stdout/logs for ops.
+AI_DOWN_NOTICE = (
+    "🛠️ Heads up — AFC Bot's AI assistant is temporarily unavailable, so I can't "
+    "auto-answer right now. Please try again a little later.\n"
+    f"If it's urgent, reach the team in <#{SUPPORT_CHANNEL_ID}> or email "
+    "**info@africanfreefirecommunity.com**."
+)
+GENERIC_ERROR_NOTICE = (
+    "⚠️ Something went wrong on my end. Please try again shortly — and if it keeps "
+    f"happening, reach the team in <#{SUPPORT_CHANNEL_ID}> or at "
+    "**info@africanfreefirecommunity.com**."
+)
+# Don't spam an identical "AI is down" notice on every message while quota is dead.
+# {channel_id: last_notice_unix_ts}
+_ai_down_notice_at: dict[int, float] = {}
+AI_DOWN_NOTICE_COOLDOWN_SECS = 300  # at most one down-notice per channel / 5 min
 
 # Scrims Master role — gets access to staff/backend knowledge
 SCRIMS_MASTER_ROLE_ID = 1011438178630107207
@@ -126,6 +162,13 @@ VIDEO_TYPES = (".mov", ".avi", ".mkv")
 # ─────────────────────────────────────────────────────────────────────────────
 
 client_ai = OpenAI(api_key=OPENAI_API_KEY)
+# Backup AI client — only built when fallback env vars are set (see config above).
+client_fallback = (
+    OpenAI(api_key=FALLBACK_API_KEY, base_url=FALLBACK_BASE_URL)
+    if FALLBACK_API_KEY and FALLBACK_BASE_URL else None
+)
+if client_fallback:
+    print(f"✅ Fallback AI provider configured ({FALLBACK_BASE_URL}, model={FALLBACK_MODEL})")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -317,7 +360,7 @@ Output ONLY valid JSON (no markdown fences):
 {{"body": "..."}}
 """
     try:
-        response = client_ai.chat.completions.create(
+        response = _chat_completion(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
@@ -1370,7 +1413,7 @@ If the admin says "exact", "dont remove", "do not remove", "use exactly", "keep 
 {knowledge}
 """
 
-    response = client_ai.chat.completions.create(
+    response = _chat_completion(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system},
@@ -1632,6 +1675,81 @@ def _normalize_links(text: str) -> str:
     return text
 
 
+def _is_quota_or_rate_error(exc: Exception) -> bool:
+    """True for quota-exhausted / rate-limit / billing errors (HTTP 429 or
+    insufficient_quota) from any provider, so we can fail over or show a clean
+    down notice instead of leaking the raw billing error to users."""
+    if isinstance(exc, (RateLimitError, APIStatusError)):
+        if getattr(exc, "status_code", None) == 429:
+            return True
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if status == 429:
+        return True
+    text = str(exc).lower()
+    return (
+        "insufficient_quota" in text
+        or "exceeded your current quota" in text
+        or "rate limit" in text
+        or "too many requests" in text
+    )
+
+
+def _chat_completion(**kwargs):
+    """Create a chat completion on the primary provider, failing over to the
+    configured fallback provider on quota/rate errors. Re-raises if there is no
+    fallback, the error isn't quota/rate related, or the fallback also fails."""
+    try:
+        return client_ai.chat.completions.create(**kwargs)
+    except Exception as exc:
+        if client_fallback is None or not _is_quota_or_rate_error(exc):
+            raise
+        fb_kwargs = dict(kwargs)
+        fb_kwargs["model"] = (
+            FALLBACK_MINI_MODEL if kwargs.get("model") == "gpt-4o-mini" else FALLBACK_MODEL
+        )
+        print(
+            f"⚠️  Primary AI quota/rate error ({exc}) — failing over to fallback "
+            f"provider (model={fb_kwargs['model']})"
+        )
+        try:
+            return client_fallback.chat.completions.create(**fb_kwargs)
+        except Exception as fb_exc:
+            # Some OpenAI-compatible providers reject tools/tool_choice with a 400.
+            # Retry once without them so failover still produces an answer.
+            status = getattr(fb_exc, "status_code", None) or getattr(fb_exc, "status", None)
+            if status == 400 and ("tools" in fb_kwargs or "tool_choice" in fb_kwargs):
+                fb_kwargs.pop("tools", None)
+                fb_kwargs.pop("tool_choice", None)
+                print("⚠️  Fallback provider rejected tools — retrying without tools")
+                return client_fallback.chat.completions.create(**fb_kwargs)
+            raise
+
+
+def _should_send_down_notice(channel_id: int) -> bool:
+    """Throttle the 'AI is down' notice to once per channel per cooldown window so
+    a dead quota doesn't spam an identical message on every incoming message."""
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _ai_down_notice_at.get(channel_id, 0) >= AI_DOWN_NOTICE_COOLDOWN_SECS:
+        _ai_down_notice_at[channel_id] = now
+        return True
+    return False
+
+
+def resolve_ai_error_reply(channel_id: int, exc: Exception, force: bool = False) -> str | None:
+    """Map an AI exception to a clean user-facing notice (never the raw error or a
+    billing link). Logs the real error to stdout for ops. Returns None when a down
+    notice was already sent to this channel recently — caller should stay quiet.
+    Pass force=True to bypass the throttle (explicit @mentions and paths that
+    already acknowledged the user must always get an answer, never silence)."""
+    if _is_quota_or_rate_error(exc):
+        print(f"⚠️  AI quota/rate error: {exc}")
+        if force or _should_send_down_notice(channel_id):
+            return AI_DOWN_NOTICE
+        return None
+    print(f"⚠️  AI call failed: {exc}")
+    return GENERIC_ERROR_NOTICE
+
+
 async def _run_chat(messages: list, allow_tools: bool = True) -> str:
     """Run a GPT-4o completion, resolving any tool calls, and return the final text.
     Tool round-trip messages stay local to this call so they never pollute the
@@ -1647,7 +1765,7 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
         if allow_tools:
             kwargs["tools"] = TEAM_TOOLS
             kwargs["tool_choice"] = "auto"
-        msg = client_ai.chat.completions.create(**kwargs).choices[0].message
+        msg = _chat_completion(**kwargs).choices[0].message
         tool_calls = getattr(msg, "tool_calls", None)
         if not tool_calls:
             return _normalize_links((msg.content or "").strip())
@@ -1667,7 +1785,7 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
             result = await _dispatch_tool(tc.function.name, tc.function.arguments)
             convo.append({"role": "tool", "tool_call_id": tc.id, "content": result})
     # Tool rounds exhausted — force a final answer with no further tools.
-    msg = client_ai.chat.completions.create(
+    msg = _chat_completion(
         model="gpt-4o", messages=convo, max_tokens=1024, temperature=0.7
     ).choices[0].message
     return _normalize_links((msg.content or "").strip())
@@ -2294,7 +2412,7 @@ def parse_edit_command(text: str):
 
 async def ai_rewrite(original_text: str, instruction: str) -> str:
     """Use GPT-4o to rewrite a message based on feedback/instruction."""
-    response = client_ai.chat.completions.create(
+    response = _chat_completion(
         model="gpt-4o",
         messages=[
             {
@@ -2667,7 +2785,7 @@ async def should_bot_respond(message_text: str, image_bytes: bytes = None, image
         else:
             user_content = message_text
 
-        response = client_ai.chat.completions.create(
+        response = _chat_completion(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -2845,7 +2963,13 @@ async def _handle_message(message: discord.Message):
             except discord.Forbidden:
                 await message.reply("❌ I don't have permission to edit that message.", mention_author=True)
             except Exception as e:
-                await message.reply(f"⚠️ Couldn't edit the message. Error: {e}", mention_author=True)
+                # ai_rewrite() runs through _chat_completion, so a quota/rate error
+                # can surface here — never dump the raw OpenAI billing error.
+                if _is_quota_or_rate_error(e):
+                    print(f"⚠️  AI quota/rate error during edit: {e}")
+                    await message.reply(AI_DOWN_NOTICE, mention_author=True)
+                else:
+                    await message.reply(f"⚠️ Couldn't edit the message. Error: {e}", mention_author=True)
             return
 
     # ── Announcement command ─────────────────────────────────────────────────
@@ -3878,10 +4002,11 @@ async def _handle_message(message: discord.Message):
                 prompt = user_text if user_text else "What is in this image? Give context relevant to AFC or Free Fire if applicable."
                 reply  = await ask_openai_with_image(message.channel.id, prompt, username, image_bytes, media_type, is_staff=is_staff)
             except Exception as e:
-                reply = f"⚠️ I couldn't analyze that image. Error: {e}"
+                reply = resolve_ai_error_reply(message.channel.id, e, force=is_mentioned)
             finally:
                 stop.set()
-            await message.reply(reply, mention_author=True)
+            if reply is not None:
+                await message.reply(reply, mention_author=True)
             return
 
         # 🎵 AUDIO — Whisper transcription → GPT-4o reply
@@ -3909,7 +4034,11 @@ async def _handle_message(message: discord.Message):
                 if needs_support:
                     await send_support_redirect(message)
             except Exception as e:
-                await message.reply(f"⚠️ I couldn't transcribe that audio. Error: {e}", mention_author=True)
+                # Audio path already posted a "give me a sec" ack — always deliver a
+                # resolution (force) so we never leave the user hanging after that.
+                notice = resolve_ai_error_reply(message.channel.id, e, force=True)
+                if notice is not None:
+                    await message.reply(notice, mention_author=True)
             return
 
         # 🎥 VIDEO — Acknowledge, can't analyze
@@ -3919,19 +4048,24 @@ async def _handle_message(message: discord.Message):
                       f"They also said: '{user_text}'. Reply naturally and in character as AFC Bot."
             stop = asyncio.Event()
             asyncio.create_task(keep_typing(message.channel, stop))
+            needs_support = False
             try:
                 reply, needs_support = await ask_openai_text(message.channel.id, context, username, is_staff=is_staff)
+            except Exception as e:
+                reply = resolve_ai_error_reply(message.channel.id, e, force=is_mentioned)
             finally:
                 stop.set()
-            await message.reply(reply, mention_author=True)
-            if needs_support:
-                await send_support_redirect(message)
+            if reply is not None:
+                await message.reply(reply, mention_author=True)
+                if needs_support:
+                    await send_support_redirect(message)
             return
 
         # ❓ Unknown file type
         else:
             stop = asyncio.Event()
             asyncio.create_task(keep_typing(message.channel, stop))
+            needs_support = False
             try:
                 reply, needs_support = await ask_openai_text(
                     message.channel.id,
@@ -3939,11 +4073,14 @@ async def _handle_message(message: discord.Message):
                     username,
                     is_staff=is_staff,
                 )
+            except Exception as e:
+                reply = resolve_ai_error_reply(message.channel.id, e, force=is_mentioned)
             finally:
                 stop.set()
-            await message.reply(reply, mention_author=True)
-            if needs_support:
-                await send_support_redirect(message)
+            if reply is not None:
+                await message.reply(reply, mention_author=True)
+                if needs_support:
+                    await send_support_redirect(message)
             return
 
     # ── Standard text reply ──────────────────────────────────────────────────
@@ -3956,13 +4093,18 @@ async def _handle_message(message: discord.Message):
 
     stop = asyncio.Event()
     asyncio.create_task(keep_typing(message.channel, stop))
+    needs_support = False
     try:
         reply, needs_support = await ask_openai_text(message.channel.id, user_text, username, is_staff=is_staff)
     except Exception as exc:
-        reply = f"⚠️ Something went wrong. Please try again or contact info@africanfreefirecommunity.com\nError: {exc}"
-        needs_support = False
+        reply = resolve_ai_error_reply(message.channel.id, exc, force=is_mentioned)
     finally:
         stop.set()
+
+    # reply is None only when the AI is down and we already notified this channel
+    # recently — stay quiet instead of spamming an identical down notice.
+    if reply is None:
+        return
 
     sent_reply = await message.reply(reply, mention_author=True)
     last_bot_messages[message.channel.id] = sent_reply.id

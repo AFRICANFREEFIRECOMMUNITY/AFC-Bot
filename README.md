@@ -35,6 +35,21 @@ OPENAI_API_KEY=your_openai_api_key_here
 ```
 > ⚠️ Never share your `.env` file or post API keys publicly.
 
+#### Optional: backup AI provider (failover)
+If OpenAI runs out of quota or gets rate-limited (HTTP 429 / `insufficient_quota`),
+the bot can automatically fail over to a second, **OpenAI-compatible** AI provider
+so it keeps answering instead of going dark. Works with Groq, OpenRouter, DeepSeek,
+Together, a second OpenAI key, a local Ollama, etc. Leave these unset to disable
+failover — the bot then shows a clean "AI temporarily unavailable" notice instead
+of a raw error.
+```
+FALLBACK_API_KEY=your_backup_provider_key
+FALLBACK_BASE_URL=https://api.groq.com/openai/v1   # the provider's OpenAI-compatible endpoint
+FALLBACK_MODEL=llama-3.3-70b-versatile             # model for normal replies (optional; this is the default)
+FALLBACK_MINI_MODEL=llama-3.3-70b-versatile        # model for the cheap classifier (optional; defaults to FALLBACK_MODEL)
+```
+> Groq has a free tier and an OpenAI-compatible endpoint, so it's the easiest drop-in backup.
+
 ### 3. Enable Discord Bot Intents
 In the [Discord Developer Portal](https://discord.com/developers/applications):
 - Go to your app → **Bot**

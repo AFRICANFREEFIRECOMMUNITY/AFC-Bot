@@ -272,7 +272,7 @@ Benefits of Linking Discord
 
  * Automatic role assignment in the AFC Discord server when you register for tournaments
 
- * Receive match room details (Room ID & Password) directly via Discord notification
+ * Receive match room details (Room ID & Password) as an extra Discord notification (note: room ID & password are now sent mainly via email and on-site website notifications — Discord is an additional channel if your account is linked)
 
  * Waitlist role notifications for popular events
 
@@ -1063,7 +1063,7 @@ A: First, make sure your Discord account is linked to your AFC profile (Settings
 
 Q: How do I get a room code / password for my match?
 
-A: Room codes and passwords are sent to you via Discord notification once your Discord account is linked. If you haven't linked Discord, go to Settings and connect your account now.
+A: Room IDs and passwords are now sent mainly via email and as a notification on the AFC website, so check your registered email inbox (including spam) and your on-site notifications around match time. If your Discord account is linked, you may also receive them as a Discord notification. If it's near match time and you still don't have the details, contact a moderator in the moderation-and-support channel.
 
 Q: Can I enter a tournament without a team?
 
