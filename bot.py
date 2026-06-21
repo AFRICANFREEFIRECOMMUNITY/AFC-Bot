@@ -28,10 +28,20 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 #   FALLBACK_BASE_URL  – its OpenAI-compatible endpoint, e.g. https://api.groq.com/openai/v1
 #   FALLBACK_MODEL     – model for normal replies   (default: llama-3.3-70b-versatile)
 #   FALLBACK_MINI_MODEL– model for the cheap classifier (defaults to FALLBACK_MODEL)
+#   FALLBACK_MAX_PROMPT_CHARS – cap on the chars sent to the fallback so the full
+#     knowledge base (~32k tokens) doesn't blow past a free-tier per-minute token
+#     limit (e.g. Groq 70b = 12k TPM → otherwise a hard 413 on every reply).
 FALLBACK_API_KEY    = os.getenv("FALLBACK_API_KEY")
 FALLBACK_BASE_URL   = os.getenv("FALLBACK_BASE_URL")
 FALLBACK_MODEL      = os.getenv("FALLBACK_MODEL", "llama-3.3-70b-versatile")
 FALLBACK_MINI_MODEL = os.getenv("FALLBACK_MINI_MODEL", FALLBACK_MODEL)
+FALLBACK_MAX_PROMPT_CHARS = int(os.getenv("FALLBACK_MAX_PROMPT_CHARS", "28000"))
+
+# Marks where the bulky knowledge dump begins in build_system_prompt(). Everything
+# ABOVE it (rules header + live events) is authoritative and must survive fallback
+# truncation; only the knowledge below it gets trimmed. Single source of truth so
+# the prompt builder and the truncator can never drift apart.
+_KNOWLEDGE_MARKER = "=== AFC KNOWLEDGE BASE ==="
 
 ALLOWED_CHANNELS = [
     920726991089598476,
@@ -1242,7 +1252,7 @@ DO NOT use the hard escalation marker for general "how do I…" questions you ca
 
 {live_events}
 
-=== AFC KNOWLEDGE BASE ===
+{_KNOWLEDGE_MARKER}
 {knowledge}
 {staff_section}"""
 
@@ -1758,6 +1768,148 @@ def _should_failover(exc: Exception) -> bool:
     return False
 
 
+# Fallback for prompts that don't carry _KNOWLEDGE_MARKER (e.g. the announcement
+# writer): keep at least this many leading chars of the system prompt. Their rule
+# headers are far shorter than this, so their rules are always retained.
+_FALLBACK_SYSTEM_FLOOR = 9600
+
+# Appended where the knowledge dump was cut, so the model knows context is partial.
+_FALLBACK_TRUNC_NOTE = (
+    "\n\n[Knowledge base trimmed to fit the fallback provider's limit. Answer "
+    "from the rules and partial knowledge above; point the user to the support "
+    "channel if unsure.]"
+)
+
+
+def _list_content_text(parts: list) -> str:
+    """Join the text parts of a multimodal content list, dropping image/audio
+    parts. The default fallback provider (Groq llama) is text-only, so those
+    binary parts are unusable dead weight that would 413/400 there; flattening to
+    text lets a vision reply still get a degraded text answer on failover."""
+    out = []
+    for p in parts:
+        if isinstance(p, dict) and p.get("type") == "text":
+            out.append(p.get("text") or "")
+        elif isinstance(p, str):
+            out.append(p)
+    return "\n".join(t for t in out if t)
+
+
+def _msg_len(m: dict) -> int:
+    """Char weight of a message for the fallback budget — counts only usable text
+    (an image part's base64 never reaches a text-only fallback, so it doesn't
+    count against the budget)."""
+    c = m.get("content")
+    if isinstance(c, str):
+        return len(c)
+    if isinstance(c, list):
+        return len(_list_content_text(c))
+    return len(str(c or ""))
+
+
+def _tc_id(tc) -> str:
+    """tool_call id from either a dict (our history shape) or an SDK object."""
+    return tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+
+
+def _strip_orphan_tool_msgs(messages: list) -> list:
+    """Drop tool-call scaffolding that lost its partner during trimming so the
+    request stays valid for OpenAI-compatible providers: a role='tool' message
+    must follow an assistant message carrying the matching tool_call id, and an
+    assistant 'tool_calls' message must have a tool response for every id. Without
+    this, step 2 could split a pair and the provider would reject the whole
+    request with a 400."""
+    declared = {}
+    for i, m in enumerate(messages):
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            for tc in m["tool_calls"]:
+                declared[_tc_id(tc)] = i
+    answered = set()
+    for i, m in enumerate(messages):
+        if m.get("role") == "tool":
+            tid = m.get("tool_call_id")
+            if tid in declared and declared[tid] < i:
+                answered.add(tid)
+    out = []
+    for i, m in enumerate(messages):
+        if m.get("role") == "tool":
+            tid = m.get("tool_call_id")
+            if not (tid in declared and declared[tid] < i):
+                continue  # orphaned tool result — its assistant was trimmed away
+        elif m.get("role") == "assistant" and m.get("tool_calls"):
+            if not all(_tc_id(tc) in answered for tc in m["tool_calls"]):
+                # tool calls whose results were trimmed — keep any text, drop calls
+                text = (m.get("content") or "").strip()
+                if text:
+                    out.append({"role": "assistant", "content": text})
+                continue
+        out.append(m)
+    return out
+
+
+def _truncate_for_fallback(messages: list, max_chars: int = FALLBACK_MAX_PROMPT_CHARS) -> list:
+    """Shrink an oversized message list so it fits a rate-limited, text-only
+    fallback provider's per-request token budget (e.g. Groq free tier ~12k TPM).
+    The primary provider (gpt-4o, 128k context) takes the full ~32k-token
+    knowledge base, but a free-tier fallback rejects it with a hard 413. Steps:
+    (0) flatten multimodal content to text — the fallback is text-only; (1) trim
+    the knowledge dump that sits below _KNOWLEDGE_MARKER, never the rules header
+    above it; (2) drop the oldest turns if still over budget; (3) repair any
+    tool-call pair split by step 2. Returns a new list; never mutates the input.
+    A no-op when the request already fits (e.g. the tiny classifier)."""
+    total = sum(_msg_len(m) for m in messages)
+    if total <= max_chars:
+        return messages
+
+    msgs = [dict(m) for m in messages]
+
+    # 0) Flatten vision/multimodal content to its text — the fallback is text-only,
+    #    so the image bytes are unusable and must not ride along (or count) here.
+    for m in msgs:
+        if isinstance(m.get("content"), list):
+            m["content"] = _list_content_text(m["content"])
+
+    # 1) Trim the knowledge dump from the system prompt, preserving the rules head.
+    #    Anchoring to _KNOWLEDGE_MARKER keeps the ENTIRE rules header + live events
+    #    intact regardless of how the header grows over time.
+    for m in msgs:
+        if total <= max_chars:
+            break
+        if m.get("role") == "system" and isinstance(m.get("content"), str):
+            content = m["content"]
+            marker = content.find(_KNOWLEDGE_MARKER)
+            keep_min = (marker + len(_KNOWLEDGE_MARKER)) if marker != -1 \
+                else min(len(content), _FALLBACK_SYSTEM_FLOOR)
+            cuttable = max(0, len(content) - keep_min)
+            if cuttable <= 0:
+                continue
+            # Cut the overage PLUS room for the note we append back, so the final
+            # message (head + note) still lands within budget.
+            need = (total - max_chars) + len(_FALLBACK_TRUNC_NOTE)
+            cut = min(cuttable, need)
+            new = content[: len(content) - cut].rstrip() + _FALLBACK_TRUNC_NOTE
+            total += len(new) - len(content)
+            m["content"] = new
+
+    # 2) Still over budget (unusually long history, or a single oversized turn) —
+    #    drop the oldest non-system turns, keeping the most recent context.
+    if total > max_chars:
+        system_msgs = [m for m in msgs if m.get("role") == "system"]
+        convo = [m for m in msgs if m.get("role") != "system"]
+        budget = max(0, max_chars - sum(_msg_len(m) for m in system_msgs))
+        kept_rev, used = [], 0
+        for m in reversed(convo):
+            c = _msg_len(m)
+            if used + c > budget and kept_rev:
+                break
+            kept_rev.append(m)
+            used += c
+        msgs = system_msgs + list(reversed(kept_rev))
+
+    # 3) Repair tool-call pairs that step 2 may have split, else the provider 400s.
+    return _strip_orphan_tool_msgs(msgs)
+
+
 def _chat_completion(**kwargs):
     """Create a chat completion on the primary provider, failing over to the
     configured fallback provider when the primary is unusable (quota/rate, 5xx
@@ -1773,6 +1925,10 @@ def _chat_completion(**kwargs):
         fb_kwargs["model"] = (
             FALLBACK_MINI_MODEL if kwargs.get("model") == "gpt-4o-mini" else FALLBACK_MODEL
         )
+        # Free-tier fallbacks have a tight per-request token cap; the full
+        # knowledge base would 413. Shrink the prompt to fit before sending.
+        if "messages" in fb_kwargs:
+            fb_kwargs["messages"] = _truncate_for_fallback(fb_kwargs["messages"])
         print(
             f"⚠️  Primary AI unavailable ({exc}) — failing over to fallback "
             f"provider (model={fb_kwargs['model']})"
@@ -1780,13 +1936,21 @@ def _chat_completion(**kwargs):
         try:
             return client_fallback.chat.completions.create(**fb_kwargs)
         except Exception as fb_exc:
+            status = getattr(fb_exc, "status_code", None) or getattr(fb_exc, "status", None)
             # Some OpenAI-compatible providers reject tools/tool_choice with a 400.
             # Retry once without them so failover still produces an answer.
-            status = getattr(fb_exc, "status_code", None) or getattr(fb_exc, "status", None)
             if status == 400 and ("tools" in fb_kwargs or "tool_choice" in fb_kwargs):
                 fb_kwargs.pop("tools", None)
                 fb_kwargs.pop("tool_choice", None)
                 print("⚠️  Fallback provider rejected tools — retrying without tools")
+                return client_fallback.chat.completions.create(**fb_kwargs)
+            # Still too large for the provider's token-per-minute cap — trim harder
+            # (half the budget) and retry once so a reply still goes out.
+            if status == 413 and "messages" in fb_kwargs:
+                fb_kwargs["messages"] = _truncate_for_fallback(
+                    fb_kwargs["messages"], max_chars=max(4000, FALLBACK_MAX_PROMPT_CHARS // 2)
+                )
+                print("⚠️  Fallback provider 413 (request too large) — retrying with harder truncation")
                 return client_fallback.chat.completions.create(**fb_kwargs)
             raise
 
