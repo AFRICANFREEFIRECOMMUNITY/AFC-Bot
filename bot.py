@@ -156,6 +156,10 @@ SEEN_NEWS_FILE          = os.path.join(BASE_DIR, "seen_news.json")
 SEEN_EVENTS_FILE        = os.path.join(BASE_DIR, "seen_events.json")
 SEEN_BAN_ACTIVITIES_FILE = os.path.join(BASE_DIR, "seen_ban_activities.json")
 
+# Organizer-event approval gate — persisted state
+PENDING_EVENT_APPROVALS_FILE = os.path.join(BASE_DIR, "pending_event_approvals.json")
+REJECTED_EVENT_IDS_FILE      = os.path.join(BASE_DIR, "rejected_event_ids.json")
+
 MAX_HISTORY      = 30
 HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
 
@@ -164,6 +168,9 @@ HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
 MODS_CHANNEL_ID = 1324442579265388644
 # Roles allowed to trigger/stop transcription (mods + support)
 TRANSCRIPTION_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
+
+# Roles allowed to approve/reject organizer-event announcements (mirrors transcription perms)
+EVENT_APPROVAL_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
 
 # Supported media types
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
@@ -457,6 +464,73 @@ def save_seen_events(seen: set):
         print(f"⚠️  Could not save seen_events.json: {e}")
 
 
+# ── Organizer-event approval state ────────────────────────────────────────────
+# message_id(str) -> event dict awaiting an admin's approval in the mods channel.
+_pending_event_approvals: dict[str, dict] = {}
+# event_id(str) set — organizer events an admin rejected; never auto-posted again.
+_rejected_event_ids: set[str] = set()
+
+
+def load_pending_event_approvals() -> dict:
+    if os.path.exists(PENDING_EVENT_APPROVALS_FILE):
+        try:
+            with open(PENDING_EVENT_APPROVALS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return {str(k): v for k, v in data.items()}
+        except Exception as e:
+            print(f"⚠️  Could not load pending_event_approvals.json: {e}")
+    return {}
+
+
+def save_pending_event_approvals(raise_on_error: bool = False):
+    try:
+        with open(PENDING_EVENT_APPROVALS_FILE, "w", encoding="utf-8") as f:
+            json.dump(_pending_event_approvals, f)
+    except Exception as e:
+        print(f"⚠️  Could not save pending_event_approvals.json: {e}")
+        if raise_on_error:
+            raise
+
+
+def load_rejected_event_ids() -> set:
+    if os.path.exists(REJECTED_EVENT_IDS_FILE):
+        try:
+            with open(REJECTED_EVENT_IDS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return {str(x) for x in data}
+        except Exception as e:
+            print(f"⚠️  Could not load rejected_event_ids.json: {e}")
+    return set()
+
+
+def save_rejected_event_ids():
+    try:
+        with open(REJECTED_EVENT_IDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(_rejected_event_ids), f)
+    except Exception as e:
+        print(f"⚠️  Could not save rejected_event_ids.json: {e}")
+
+
+def _pending_event_ids() -> set:
+    """event_ids currently awaiting approval (derived from pending payloads)."""
+    return {str(ev.get("event_id")) for ev in _pending_event_approvals.values()}
+
+
+def is_organizer_event(event: dict) -> bool:
+    """True if a partner organization created this event (vs an AFC-run event).
+
+    AFC-run events carry no organization_name (build_event_embed falls back to
+    'African Freefire Community'); a non-empty org name that isn't AFC itself
+    marks a partner-organizer event that must be approved before announcing.
+    """
+    org = (event.get("organization_name") or "").strip()
+    if not org:
+        return False
+    return org.lower() != "african freefire community"
+
+
 async def fetch_all_events() -> list:
     """Uses the existing public events endpoint — no backend changes needed."""
     url = f"{AFC_API_BASE}/events/get-all-events/"
@@ -510,6 +584,100 @@ async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
 
     ping = f"<@&{SCRIMS_PING_ROLE_ID}>" if is_scrim else None
     return embed, ping
+
+
+async def announce_event_public(event: dict):
+    """Post an event's announcement embed to its public tournament/scrim channel,
+    with the same @everyone (tournament) / scrim-role ping rules used since launch."""
+    embed, ping = await build_event_embed(event)
+    is_scrim = event.get("competition_type", "").lower() == "scrims"
+    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
+    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
+    everyone_ping = "@everyone" if not is_scrim else ""
+    content = " ".join(filter(None, [everyone_ping, ping]))
+    await channel.send(content=content, embed=embed)
+
+
+class EventApprovalView(discord.ui.View):
+    """Persistent Approve/Reject buttons for organizer-event previews in the mods
+    channel. One instance is registered globally in on_ready; it resolves the
+    pending event by the message id the buttons live on."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ Approve", style=discord.ButtonStyle.success, custom_id="afc_event_approve")
+    async def approve(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await self._handle(interaction, approved=True)
+
+    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.danger, custom_id="afc_event_reject")
+    async def reject(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await self._handle(interaction, approved=False)
+
+    async def _handle(self, interaction: discord.Interaction, approved: bool):
+        member = interaction.user
+        roles = getattr(member, "roles", [])
+        if not any(getattr(r, "id", None) in EVENT_APPROVAL_ROLES for r in roles):
+            await interaction.response.send_message(
+                "⛔ You're not authorized to approve event announcements.", ephemeral=True
+            )
+            return
+
+        mid = str(interaction.message.id)
+        event = _pending_event_approvals.pop(mid, None)
+        if event is None:
+            await interaction.response.send_message(
+                "⚠️ This approval was already handled or has expired.", ephemeral=True
+            )
+            return
+        save_pending_event_approvals()
+
+        # Ack the click now — posting the public announcement below can take longer
+        # than Discord's ~3s response window, which would otherwise expire the token
+        # and leave the preview stuck with live buttons over an already-posted event.
+        await interaction.response.defer()
+
+        if approved:
+            try:
+                await announce_event_public(event)
+            except Exception as e:
+                _pending_event_approvals[mid] = event   # re-queue so approval isn't lost
+                save_pending_event_approvals()
+                await interaction.followup.send(
+                    f"⚠️ Couldn't post the announcement: {e}", ephemeral=True
+                )
+                return
+            note = f"✅ **Approved** by {member.mention} — announcement posted."
+            print(f"✅  Event approved by {member}: {event.get('event_name')}")
+        else:
+            _rejected_event_ids.add(str(event.get("event_id")))
+            save_rejected_event_ids()
+            note = f"❌ **Rejected** by {member.mention} — not announced."
+            print(f"❌  Event rejected by {member}: {event.get('event_name')}")
+
+        # Rewrite the preview content and drop the buttons (interaction was deferred).
+        await interaction.message.edit(content=note, view=None)
+
+
+async def post_event_for_approval(event: dict):
+    """Send an organizer event to the mods channel for admin approval instead of
+    announcing it publicly. Raises on failure so the poll loop can retry."""
+    channel = bot.get_channel(MODS_CHANNEL_ID) or await bot.fetch_channel(MODS_CHANNEL_ID)
+    embed, _ping = await build_event_embed(event)
+    is_scrim  = event.get("competition_type", "").lower() == "scrims"
+    target    = "scrim" if is_scrim else "tournament"
+    organizer = event.get("organization_name") or "an organizer"
+    header = (
+        f"🕓 **PENDING APPROVAL** — new {target} from **{organizer}**.\n"
+        f"Approve to announce it publicly, or reject to discard."
+    )
+    msg = await channel.send(content=header, embed=embed, view=EventApprovalView())
+    _pending_event_approvals[str(msg.id)] = event
+    # Raise if we can't persist the pending record so the poll loop's except leaves
+    # the event unseen and retries — rather than marking it seen with an in-memory-
+    # only entry that a restart would lose, silently dropping the event for good.
+    save_pending_event_approvals(raise_on_error=True)
+    print(f"🕓  Event sent for approval: {event.get('event_name')} (msg {msg.id})")
 
 
 def _load_event_statuses() -> dict:
@@ -585,20 +753,25 @@ async def event_poll_loop():
     if not seen:
         events = await fetch_all_events()
         _cached_events = events
-        # Only seed INTERNAL events. Externals stay unseen so that if/when they flip
-        # to internal, they get announced as if newly created.
-        seen = {str(e["event_id"]) for e in events if e.get("event_type") != "external"}
+        # Only seed INTERNAL, AFC-run events. Externals stay unseen so a flip to
+        # internal announces like new. Organizer events are also left unseen on
+        # purpose, so the first real poll routes them through the approval gate
+        # instead of leaking later via an un-gated status-change embed.
+        seen = {
+            str(e["event_id"]) for e in events
+            if e.get("event_type") != "external" and not is_organizer_event(e)
+        }
         save_seen_events(seen)
-        # Seed statuses on first boot so we don't spam status changes (internals only)
+        # Seed statuses on first boot so we don't spam status changes (seeded events only)
         for e in events:
-            if e.get("event_type") == "external":
+            if e.get("event_type") == "external" or is_organizer_event(e):
                 continue
             eid = str(e["event_id"])
             status = e.get("event_status", "")
             if status:
                 event_statuses[eid] = status
         _save_event_statuses(event_statuses)
-        print(f"🎮  Event poll: seeded {len(seen)} existing internal event(s). Watching for new ones.")
+        print(f"🎮  Event poll: seeded {len(seen)} existing event(s). Watching for new ones.")
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
@@ -609,32 +782,37 @@ async def event_poll_loop():
             # ── Announce NEW events ──
             # Skip external events. They never enter `seen`, so if an event later
             # flips from external → internal it will be announced like a new event.
+            pending_ids = _pending_event_ids()
             new_events = [
                 e for e in events
-                if str(e["event_id"]) not in seen and e.get("event_type") != "external"
+                if str(e["event_id"]) not in seen
+                and e.get("event_type") != "external"
+                and str(e["event_id"]) not in _rejected_event_ids
+                and str(e["event_id"]) not in pending_ids
             ]
 
             for event in reversed(new_events):
+                eid = str(event["event_id"])
                 try:
-                    embed, ping = await build_event_embed(event)
-                    is_scrim = event.get("competition_type", "").lower() == "scrims"
-                    ch_id = SCRIM_ANNOUNCEMENT_CHANNEL_ID if is_scrim else TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID
-
-                    channel = bot.get_channel(ch_id) or await bot.fetch_channel(ch_id)
-                    everyone_ping = "@everyone" if not is_scrim else ""
-                    content = " ".join(filter(None, [everyone_ping, ping]))
-                    await channel.send(content=content, embed=embed)
-                    seen.add(str(event["event_id"]))
+                    if is_organizer_event(event):
+                        # Partner-organizer event → hold for admin approval in the
+                        # mods channel; nothing is posted publicly until approved.
+                        await post_event_for_approval(event)
+                    else:
+                        await announce_event_public(event)
+                        print(f"🎮  Announced event: {event.get('event_name')}")
+                    seen.add(eid)
                     # Seed the status so we don't also fire a status-change for new events
-                    eid = str(event["event_id"])
                     event_statuses[eid] = event.get("event_status", "")
-                    print(f"🎮  Announced event: {event.get('event_name')}")
                     await asyncio.sleep(2)
                 except Exception as e:
-                    print(f"⚠️  Failed to post event {event.get('event_id')}: {e}")
+                    print(f"⚠️  Failed to handle new event {eid}: {e}")
 
             if new_events:
                 save_seen_events(seen)
+                # Persist seeded statuses too, so a restart while an event is pending
+                # approval doesn't later swallow its first real status-change embed.
+                _save_event_statuses(event_statuses)
 
             # ── Detect STATUS CHANGES on existing events ──
             statuses_changed = False
@@ -643,6 +821,18 @@ async def event_poll_loop():
                 if event.get("event_type") == "external":
                     continue
                 eid = str(event.get("event_id"))
+                # Rejected events are permanently suppressed — never announce.
+                if eid in _rejected_event_ids:
+                    continue
+                # Events still awaiting approval must not announce a status change, but
+                # keep the recorded status current so that, once approved, a flip that
+                # happened while it was pending isn't re-announced as stale news.
+                if eid in _pending_event_ids():
+                    pending_status = event.get("event_status", "")
+                    if pending_status and event_statuses.get(eid) != pending_status:
+                        event_statuses[eid] = pending_status
+                        statuses_changed = True
+                    continue
                 new_status = event.get("event_status", "")
                 old_status = event_statuses.get(eid, "")
 
@@ -2886,6 +3076,14 @@ async def on_ready():
         print(f"🎮  Pre-cached {len(_cached_events)} event(s) for live Q&A")
     except Exception as e:
         print(f"⚠️  Could not pre-cache events: {e}")
+
+    # Restore organizer-event approval state and bind the persistent buttons so
+    # previews posted before this restart keep working.
+    global _pending_event_approvals, _rejected_event_ids
+    _pending_event_approvals = load_pending_event_approvals()
+    _rejected_event_ids = load_rejected_event_ids()
+    bot.add_view(EventApprovalView())
+    print(f"🕓  Approval gate: {len(_pending_event_approvals)} pending, {len(_rejected_event_ids)} rejected")
 
     bot.loop.create_task(auto_purge_loop())
     bot.loop.create_task(auto_scrape_loop())
