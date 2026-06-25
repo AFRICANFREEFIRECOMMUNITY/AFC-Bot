@@ -599,9 +599,9 @@ async def announce_event_public(event: dict):
 
 
 class EventApprovalView(discord.ui.View):
-    """Persistent Approve/Reject buttons for organizer-event previews in the mods
-    channel. One instance is registered globally in on_ready; it resolves the
-    pending event by the message id the buttons live on."""
+    """Persistent Approve/Reject buttons for event previews in the mods channel.
+    One instance is registered globally in on_ready; it resolves the pending
+    event by the message id the buttons live on."""
 
     def __init__(self):
         super().__init__(timeout=None)
@@ -660,13 +660,13 @@ class EventApprovalView(discord.ui.View):
 
 
 async def post_event_for_approval(event: dict):
-    """Send an organizer event to the mods channel for admin approval instead of
+    """Send an event to the mods channel for admin approval instead of
     announcing it publicly. Raises on failure so the poll loop can retry."""
     channel = bot.get_channel(MODS_CHANNEL_ID) or await bot.fetch_channel(MODS_CHANNEL_ID)
     embed, _ping = await build_event_embed(event)
     is_scrim  = event.get("competition_type", "").lower() == "scrims"
     target    = "scrim" if is_scrim else "tournament"
-    organizer = event.get("organization_name") or "an organizer"
+    organizer = event.get("organization_name") or "African Freefire Community"
     header = (
         f"🕓 **PENDING APPROVAL** — new {target} from **{organizer}**.\n"
         f"Approve to announce it publicly, or reject to discard."
@@ -794,13 +794,10 @@ async def event_poll_loop():
             for event in reversed(new_events):
                 eid = str(event["event_id"])
                 try:
-                    if is_organizer_event(event):
-                        # Partner-organizer event → hold for admin approval in the
-                        # mods channel; nothing is posted publicly until approved.
-                        await post_event_for_approval(event)
-                    else:
-                        await announce_event_public(event)
-                        print(f"🎮  Announced event: {event.get('event_name')}")
+                    # Every new event — AFC-run/admin and partner-organizer alike —
+                    # is held for admin approval in the mods channel; nothing is
+                    # posted publicly until an admin approves it.
+                    await post_event_for_approval(event)
                     seen.add(eid)
                     # Seed the status so we don't also fire a status-change for new events
                     event_statuses[eid] = event.get("event_status", "")
