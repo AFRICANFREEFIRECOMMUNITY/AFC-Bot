@@ -3106,11 +3106,82 @@ WHISPER_PROMPT = (
 )
 
 
-# Voice receive (sinks + VoiceClient.start_recording) is a py-cord API that does
-# NOT exist in discord.py — feature-detect so the transcription flows degrade
-# gracefully (clear "not supported" message, no connect) instead of crashing
-# AFTER connect() and stranding a zombie voice connection until restart.
-VOICE_RECEIVE_SUPPORTED = hasattr(discord, "sinks") and hasattr(discord.VoiceClient, "start_recording")
+# discord.py has no built-in voice receive — it comes from the
+# discord-ext-voice-recv extension (requirements.txt). Feature-detect so the
+# transcription flows degrade gracefully (clean "not supported" message, no
+# connect) if the extension is missing, instead of crashing AFTER connect()
+# and stranding a zombie voice connection until restart.
+try:
+    from discord.ext import voice_recv  # discord-ext-voice-recv
+    import audioop  # stdlib through 3.12 (prod pins 3.11) — PCM downmix/resample
+    VOICE_RECEIVE_SUPPORTED = True
+except Exception as _vr_exc:
+    voice_recv = None
+    VOICE_RECEIVE_SUPPORTED = False
+    print(f"⚠️  Voice receive unavailable ({_vr_exc}) — transcription disabled")
+
+
+if VOICE_RECEIVE_SUPPORTED:
+    class PerUserTranscriptionSink(voice_recv.AudioSink):
+        """Accumulates each speaker's audio as 16kHz mono s16 PCM.
+
+        Downsampling from the decoder's 48kHz stereo (~6x smaller) matters for
+        long stage sessions: RAM stays bounded and each Whisper upload fits the
+        API's 25MB file cap. write() runs on the voice receive thread, so it
+        only does cheap C-level audioop calls and bytearray appends — and must
+        never raise, or the whole receive loop dies."""
+
+        SRC_RATE  = 48000   # discord.opus.Decoder output rate
+        SRC_WIDTH = 2       # 16-bit samples
+        DST_RATE  = 16000   # Whisper's native rate
+        # Hard per-speaker cap: 1 hour of actual speech (~115MB). Without it a
+        # marathon stage session can OOM the small EC2 box.
+        MAX_PCM_BYTES_PER_USER = 60 * 60 * 16000 * 2
+
+        def __init__(self):
+            super().__init__()
+            self._pcm: dict[int, bytearray] = {}
+            self._ratecv_state: dict[int, object] = {}
+            self._capped: set[int] = set()
+
+        def wants_opus(self) -> bool:
+            return False
+
+        def write(self, user, data) -> None:
+            if user is None:
+                return
+            try:
+                mono = audioop.tomono(data.pcm, self.SRC_WIDTH, 0.5, 0.5)
+                converted, self._ratecv_state[user.id] = audioop.ratecv(
+                    mono, self.SRC_WIDTH, 1, self.SRC_RATE, self.DST_RATE,
+                    self._ratecv_state.get(user.id),
+                )
+                buf = self._pcm.setdefault(user.id, bytearray())
+                if len(buf) < self.MAX_PCM_BYTES_PER_USER:
+                    buf.extend(converted)
+                elif user.id not in self._capped:
+                    self._capped.add(user.id)
+                    print(f"⚠️  Transcription buffer cap (1h speech) reached for user {user.id} — further audio dropped")
+            except Exception:
+                pass
+
+        def cleanup(self) -> None:
+            pass
+
+        def take_audio(self) -> dict[int, bytes]:
+            """Call after stop_listening(): {user_id: 16kHz mono s16 PCM}.
+
+            stop_listening() does NOT join the library's router thread — one
+            final write() can still land while this runs, so iterate a snapshot
+            (list(...)) to avoid 'dict changed size during iteration'. Callers
+            also sleep briefly first; any write after the snapshot is dropped
+            (sub-second tail, acceptable)."""
+            out = {uid: bytes(buf) for uid, buf in list(self._pcm.items()) if buf}
+            self._pcm.clear()
+            self._ratecv_state.clear()
+            return out
+else:
+    PerUserTranscriptionSink = None
 
 
 def has_transcription_role(member: discord.Member) -> bool:
@@ -3131,42 +3202,68 @@ def parse_transcription_command(text: str):
     return None
 
 
-async def _process_and_send_transcript(sink, text_channel, requester, start_time):
-    """Transcribe all recorded audio per-user and send a merged document."""
+# Whisper rejects uploads over 25MB; 12 minutes of 16kHz mono s16 PCM wrapped in
+# a wav is ~23MB, so long sessions are transcribed in 12-minute chunks per user
+# and the segment timestamps re-offset by the chunk position.
+TRANSCRIBE_CHUNK_SECS = 12 * 60
+_PCM_BYTES_PER_SEC = 16000 * 2  # 16kHz mono, 2 bytes per sample
+
+
+async def _process_and_send_transcript(audio_data: dict, text_channel, requester, start_time):
+    """Transcribe each speaker's 16kHz mono PCM (from PerUserTranscriptionSink
+    .take_audio()) and send a merged document."""
     import io
+    import wave as wave_mod
+
+    if not audio_data:
+        await text_channel.send("⚠️ No audio was captured.")
+        return
+
     await text_channel.send("⏳ Transcribing... this may take a moment.")
 
     all_segments = []
+    chunk_bytes = TRANSCRIBE_CHUNK_SECS * _PCM_BYTES_PER_SEC
 
-    for user_id, audio_data in sink.audio_data.items():
+    for user_id, pcm in audio_data.items():
+        user = bot.get_user(user_id)
+        username = user.display_name if user else f"User {user_id}"
         try:
-            user = bot.get_user(user_id)
-            username = user.display_name if user else f"User {user_id}"
-            audio_data.file.seek(0)
+            for ci in range(0, len(pcm), chunk_bytes):
+                chunk = pcm[ci:ci + chunk_bytes]
+                if len(chunk) < _PCM_BYTES_PER_SEC // 2:
+                    continue  # under half a second — noise, not speech
+                buf = io.BytesIO()
+                with wave_mod.open(buf, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(chunk)
+                buf.seek(0)
 
-            def _transcribe(file_bytes, uname):
-                return client_ai.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=("audio.wav", file_bytes, "audio/wav"),
-                    response_format="verbose_json",
-                    timestamp_granularities=["segment"],
-                    prompt=WHISPER_PROMPT,
-                )
+                def _transcribe(b=buf):
+                    return client_ai.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=("audio.wav", b, "audio/wav"),
+                        response_format="verbose_json",
+                        timestamp_granularities=["segment"],
+                        prompt=WHISPER_PROMPT,
+                    )
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _transcribe, audio_data.file, username)
-
-            for seg in result.segments:
-                all_segments.append({
-                    "username": username,
-                    "start":    seg.start,
-                    "text":     seg.text.strip(),
-                })
+                result = await asyncio.to_thread(_transcribe)
+                offset_secs = ci // _PCM_BYTES_PER_SEC
+                for seg in (result.segments or []):
+                    text = seg.text.strip()
+                    if text:
+                        all_segments.append({
+                            "username": username,
+                            "start":    seg.start + offset_secs,
+                            "text":     text,
+                        })
         except Exception as e:
             print(f"⚠️  Transcription failed for user {user_id}: {e}")
 
     if not all_segments:
-        await text_channel.send("⚠️ No audio was captured or all transcriptions failed.")
+        await text_channel.send("⚠️ No speech was detected or all transcriptions failed.")
         return
 
     all_segments.sort(key=lambda x: x["start"])
@@ -3268,22 +3365,20 @@ async def on_stage_instance_create(stage: discord.StageInstance):
         if reply.content.lower().strip() in ("yes", "y"):
             vc = None
             try:
-                vc         = await stage.channel.connect()
-                sink       = discord.sinks.WaveSink()
+                vc         = await stage.channel.connect(cls=voice_recv.VoiceRecvClient)
+                sink       = PerUserTranscriptionSink()
                 start_time = datetime.now(timezone.utc)
                 requester  = reply.author
 
                 active_transcriptions[stage.guild.id] = {
                     "vc":           vc,
+                    "sink":         sink,
                     "text_channel": mods_channel,
                     "requester":    requester,
                     "start_time":   start_time,
                 }
 
-                async def _cb(s, *_):
-                    await _process_and_send_transcript(s, mods_channel, requester, start_time)
-
-                vc.start_recording(sink, _cb)
+                vc.listen(sink)
                 await mods_channel.send(
                     f"✅ Joined {stage.channel.mention} and started transcribing.\n"
                     f"Say `@bot stop transcribing` when the session is done."
@@ -3306,6 +3401,50 @@ async def on_stage_instance_create(stage: discord.StageInstance):
         await mods_channel.send("⏱️ No response in 2 minutes — not transcribing.")
     finally:
         pending_stage_prompts.pop(stage.channel.id, None)
+
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    """If the BOT is disconnected from voice mid-session (stage ended, kicked,
+    channel deleted) without anyone saying 'stop transcribing', finalize the
+    transcription instead of leaking the session — a leaked entry would lock
+    out every future start with 'Already transcribing' until restart, and the
+    captured audio would be lost."""
+    if bot.user is None or member.id != bot.user.id:
+        return
+    if before.channel is None or after.channel is not None:
+        return  # not a disconnect
+    session = active_transcriptions.pop(member.guild.id, None)
+    if not session:
+        return
+    vc, sink = session["vc"], session.get("sink")
+    try:
+        if hasattr(vc, "stop_listening"):
+            vc.stop_listening()
+    except Exception:
+        pass
+    try:
+        await vc.disconnect(force=True)
+    except Exception:
+        pass
+    try:
+        await session["text_channel"].send(
+            "⚠️ I was disconnected from the voice channel — generating the transcript from what was captured."
+        )
+    except Exception:
+        pass
+    await asyncio.sleep(0.5)  # let the router thread flush (see take_audio())
+    audio = sink.take_audio() if sink else {}
+
+    async def _finish():
+        try:
+            await _process_and_send_transcript(
+                audio, session["text_channel"], session["requester"], session["start_time"]
+            )
+        except Exception as e:
+            print(f"⚠️  Transcript generation failed: {e}")
+
+    asyncio.create_task(_finish())
 
 
 # ── Events ───────────────────────────────────────────────────────────────────
@@ -3922,22 +4061,43 @@ async def _handle_message(message: discord.Message):
             action = trans_cmd["action"]
 
             if action == "stop":
-                session = active_transcriptions.get(message.guild.id)
+                session = active_transcriptions.pop(message.guild.id, None)
                 if not session:
                     await message.reply("❌ No active transcription session running.", mention_author=True)
                     return
-                vc = session["vc"]
+                vc   = session["vc"]
+                sink = session.get("sink")
                 try:
-                    if hasattr(vc, "stop_recording"):
-                        vc.stop_recording()
-                    else:
-                        # Library without voice receive — just leave the channel
-                        # so the bot is never stranded in voice.
-                        await vc.disconnect(force=True)
+                    if hasattr(vc, "stop_listening"):
+                        vc.stop_listening()
                 except Exception as e:
-                    print(f"⚠️  stop transcription failed: {e}")
-                active_transcriptions.pop(message.guild.id, None)
+                    print(f"⚠️  stop_listening failed: {e}")
+                try:
+                    await vc.disconnect(force=True)
+                except Exception as e:
+                    print(f"⚠️  voice disconnect failed: {e}")
                 await message.reply("⏹️ Stopped recording. Generating transcript...", mention_author=True)
+
+                # Give the library's detached router thread a beat to flush its
+                # final write() before we read the buffers (see take_audio()).
+                await asyncio.sleep(0.5)
+                audio = sink.take_audio() if sink else {}
+
+                # Whisper can take minutes on a long session — run it as a task
+                # so the message handler returns immediately.
+                async def _finish(a=audio, s=session):
+                    try:
+                        await _process_and_send_transcript(
+                            a, s["text_channel"], s["requester"], s["start_time"]
+                        )
+                    except Exception as e:
+                        print(f"⚠️  Transcript generation failed: {e}")
+                        try:
+                            await s["text_channel"].send("⚠️ Transcript generation failed.")
+                        except Exception:
+                            pass
+
+                asyncio.create_task(_finish())
                 return
 
             elif action == "start":
@@ -3975,23 +4135,21 @@ async def _handle_message(message: discord.Message):
 
                 vc = None
                 try:
-                    vc         = await voice_ch.connect()
-                    sink       = discord.sinks.WaveSink()
+                    vc         = await voice_ch.connect(cls=voice_recv.VoiceRecvClient)
+                    sink       = PerUserTranscriptionSink()
                     start_time = datetime.now(timezone.utc)
                     requester  = message.author
                     text_ch    = message.channel
 
                     active_transcriptions[message.guild.id] = {
                         "vc":           vc,
+                        "sink":         sink,
                         "text_channel": text_ch,
                         "requester":    requester,
                         "start_time":   start_time,
                     }
 
-                    async def _manual_cb(s, *_):
-                        await _process_and_send_transcript(s, text_ch, requester, start_time)
-
-                    vc.start_recording(sink, _manual_cb)
+                    vc.listen(sink)
                     await message.reply(
                         f"✅ Joined {voice_ch.mention} and started transcribing.\n"
                         f"Say `@bot stop transcribing` when the session is done.",
