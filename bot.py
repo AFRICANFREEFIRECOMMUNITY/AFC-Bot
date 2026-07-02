@@ -8,6 +8,8 @@ import aiohttp
 import json
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional, Union
+from discord import app_commands
 from openai import OpenAI, RateLimitError, APIStatusError, APIConnectionError, APITimeoutError
 from dotenv import load_dotenv
 import base64
@@ -232,6 +234,9 @@ intents.message_content = True
 # Message Content Intent) or the bot will refuse to start.
 intents.members = True
 bot = discord.Client(intents=intents)
+# Application (slash) command tree — commands defined in the "Slash commands"
+# section below and synced per guild in on_ready.
+tree = app_commands.CommandTree(bot)
 
 # In-memory history — loaded from file on startup
 # Structure: { "channel_id": { "messages": [...], "last_updated": <unix timestamp> } }
@@ -3447,6 +3452,248 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     asyncio.create_task(_finish())
 
 
+# ── Slash commands ────────────────────────────────────────────────────────────
+# Discord-native application commands: typing "/" lists them with descriptions,
+# and they show on the bot's profile. Each is a thin adapter that synthesizes
+# the equivalent natural-language command and feeds it through the SAME
+# _handle_message pipeline the @mention flow uses — zero duplicated logic, and
+# follow-up interactions (announcement previews, purge confirmations) work
+# exactly as they do today. The natural-language commands remain available.
+
+class _SlashCommandShim:
+    """Adapts a slash Interaction into the message shape _handle_message expects."""
+
+    def __init__(self, interaction: discord.Interaction, content: str, attachments: list = None):
+        self.id = interaction.id
+        self.author = interaction.user
+        self.channel = interaction.channel
+        self.guild = interaction.guild
+        self.content = content
+        self.attachments = attachments or []
+        self.mentions = [bot.user]   # force the mention path (skip the classifier)
+        self.reference = None
+        self._from_slash = True
+
+    async def reply(self, content=None, **kwargs):
+        kwargs.pop("mention_author", None)
+        return await self.channel.send(content, **kwargs)
+
+
+async def _dispatch_slash(interaction: discord.Interaction, content: str, attachments: list = None):
+    """Ack the slash command ephemerally, then run the synthesized command
+    through the normal message pipeline. Prompts (previews, confirmations)
+    appear in the channel just like the @mention flow."""
+    await interaction.response.send_message(f"➡️ Running: `{content[:180]}`", ephemeral=True)
+    shim = _SlashCommandShim(interaction, content, attachments)
+
+    async def _run():
+        try:
+            await _handle_message(shim)
+        except Exception as e:
+            print(f"⚠️  Slash command failed ({content[:60]}): {e}")
+            try:
+                await interaction.followup.send(GENERIC_ERROR_NOTICE, ephemeral=True)
+            except Exception:
+                pass
+
+    asyncio.create_task(_run())
+
+
+@tree.command(name="help", description="See everything AFC Bot can do")
+@app_commands.guild_only()
+async def slash_help(interaction: discord.Interaction):
+    await _dispatch_slash(interaction, "help")
+
+
+@tree.command(name="ask", description="Ask AFC Bot anything — tournaments, teams, registration, rules")
+@app_commands.describe(question="Your question (Pidgin welcome)")
+@app_commands.guild_only()
+async def slash_ask(interaction: discord.Interaction, question: str):
+    await interaction.response.defer(thinking=True)
+    needs_support = False
+    try:
+        reply, needs_support = await ask_openai_text(
+            interaction.channel_id, question, interaction.user.display_name,
+            is_staff=has_staff_role(interaction.user),
+        )
+    except Exception as e:
+        reply = resolve_ai_error_reply(interaction.channel_id, e, force=True)
+    if not reply or not reply.strip():
+        reply = GENERIC_ERROR_NOTICE
+    for i in range(0, len(reply), 2000):
+        await interaction.followup.send(reply[i:i + 2000])
+    if needs_support:
+        await send_support_redirect(_SlashCommandShim(interaction, question))
+
+
+@tree.command(name="announce", description="Post an AI-formatted announcement (shows a preview first)")
+@app_commands.describe(
+    channel="Channel to announce in",
+    message="What the announcement should say",
+    user="Optionally tag a user in the announcement",
+    image="Optional image for the announcement",
+)
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_announce(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel,
+    message: str,
+    user: Optional[discord.Member] = None,
+    image: Optional[discord.Attachment] = None,
+):
+    text = (
+        f"send {message} to {user.mention} in {channel.mention}"
+        if user else f"send {message} to {channel.mention}"
+    )
+    await _dispatch_slash(interaction, text, attachments=[image] if image else None)
+
+
+@tree.command(name="edit-last", description="Rewrite my last message or announcement with your instruction")
+@app_commands.describe(
+    instruction="How to change it (e.g. 'less emojis', 'make it shorter')",
+    channel="Channel of the announcement to edit (default: last reply here)",
+)
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_edit_last(
+    interaction: discord.Interaction,
+    instruction: str,
+    channel: Optional[discord.TextChannel] = None,
+):
+    text = (
+        f"edit last announcement in {channel.mention} — {instruction}"
+        if channel else f"edit my last message — {instruction}"
+    )
+    await _dispatch_slash(interaction, text)
+
+
+@tree.command(name="purge", description="Delete the last N messages in a channel (asks to confirm)")
+@app_commands.describe(amount="How many messages to delete", channel="Channel (default: here)")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_purge(
+    interaction: discord.Interaction,
+    amount: app_commands.Range[int, 1, 1000],
+    channel: Optional[discord.TextChannel] = None,
+):
+    where = f" in {channel.mention}" if channel else ""
+    await _dispatch_slash(interaction, f"delete the last {amount} messages{where}")
+
+
+@tree.command(name="purge-user", description="Delete all messages from a user (asks to confirm)")
+@app_commands.describe(user="Whose messages to delete", channel="Channel (default: here)")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_purge_user(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    channel: Optional[discord.TextChannel] = None,
+):
+    where = f" in {channel.mention}" if channel else ""
+    await _dispatch_slash(interaction, f"purge messages from {user.mention}{where}")
+
+
+@tree.command(name="purge-all", description="Delete ALL messages in a channel (asks to confirm)")
+@app_commands.describe(channel="Channel (default: here)")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_purge_all(
+    interaction: discord.Interaction,
+    channel: Optional[discord.TextChannel] = None,
+):
+    where = f" in {channel.mention}" if channel else ""
+    await _dispatch_slash(interaction, f"purge all messages{where}")
+
+
+@tree.command(name="transcribe", description="Join a voice/stage channel and transcribe the session")
+@app_commands.describe(channel="Voice or stage channel (default: the one you're in)")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_transcribe(
+    interaction: discord.Interaction,
+    channel: Optional[Union[discord.VoiceChannel, discord.StageChannel]] = None,
+):
+    text = f"transcribe {channel.mention}" if channel else "transcribe this session"
+    await _dispatch_slash(interaction, text)
+
+
+@tree.command(name="stop-transcribing", description="Stop recording and generate the transcript")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
+async def slash_stop_transcribing(interaction: discord.Interaction):
+    await _dispatch_slash(interaction, "stop transcribing")
+
+
+@tree.command(name="role-give", description="Give a role to a user")
+@app_commands.describe(user="Who gets the role", role="Role to give")
+@app_commands.default_permissions(manage_roles=True)
+@app_commands.guild_only()
+async def slash_role_give(interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    await _dispatch_slash(interaction, f"give {role.mention} to {user.mention}")
+
+
+@tree.command(name="role-remove", description="Remove a role from a user")
+@app_commands.describe(user="Who loses the role", role="Role to remove")
+@app_commands.default_permissions(manage_roles=True)
+@app_commands.guild_only()
+async def slash_role_remove(interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    await _dispatch_slash(interaction, f"remove {role.mention} from {user.mention}")
+
+
+@tree.command(name="lock", description="Lock a channel (everyone can read, nobody can send)")
+@app_commands.describe(channel="Channel to lock")
+@app_commands.default_permissions(manage_channels=True)
+@app_commands.guild_only()
+async def slash_lock(interaction: discord.Interaction, channel: discord.TextChannel):
+    await _dispatch_slash(interaction, f"lock {channel.mention}")
+
+
+@tree.command(name="unlock", description="Unlock a previously locked channel")
+@app_commands.describe(channel="Channel to unlock")
+@app_commands.default_permissions(manage_channels=True)
+@app_commands.guild_only()
+async def slash_unlock(interaction: discord.Interaction, channel: discord.TextChannel):
+    await _dispatch_slash(interaction, f"unlock {channel.mention}")
+
+
+@tree.command(name="create-channel", description="Create a text/voice channel or category")
+@app_commands.describe(
+    name="Name for the new channel",
+    kind="What to create",
+    private="Hide it from @everyone",
+    category="Put the channel under this category",
+    role="Role that can access it (for private channels)",
+)
+@app_commands.choices(kind=[
+    app_commands.Choice(name="text", value="text"),
+    app_commands.Choice(name="voice", value="voice"),
+    app_commands.Choice(name="category", value="category"),
+])
+@app_commands.default_permissions(manage_channels=True)
+@app_commands.guild_only()
+async def slash_create_channel(
+    interaction: discord.Interaction,
+    name: str,
+    kind: app_commands.Choice[str],
+    private: Optional[bool] = False,
+    category: Optional[discord.CategoryChannel] = None,
+    role: Optional[discord.Role] = None,
+):
+    parts = ["create"]
+    if private:
+        parts.append("private")
+    if kind.value == "category":
+        parts.append(f"category {name}")
+    else:
+        parts.append(f"{kind.value} channel {name}")
+    if role:
+        parts.append(f"for {role.mention}")
+    if category and kind.value != "category":
+        parts.append(f"in <#{category.id}>")
+    await _dispatch_slash(interaction, " ".join(parts))
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 # on_ready fires on EVERY gateway re-IDENTIFY (reconnect), not just first boot.
 # One-time init (background loops, persistent view, approval state) must run
@@ -3489,6 +3736,16 @@ async def on_ready():
     _rejected_event_ids = load_rejected_event_ids()
     bot.add_view(EventApprovalView())
     print(f"🕓  Approval gate: {len(_pending_event_approvals)} pending, {len(_rejected_event_ids)} rejected")
+
+    # Sync slash commands per guild (instant, vs up to 1h for global sync).
+    try:
+        synced = []
+        for g in bot.guilds:
+            tree.copy_global_to(guild=g)
+            synced = await tree.sync(guild=g)
+        print(f"⌨️  Slash commands: synced {len(synced)} command(s) to {len(bot.guilds)} guild(s)")
+    except Exception as e:
+        print(f"⚠️  Slash command sync failed: {e}")
 
     bot.loop.create_task(auto_purge_loop())
     bot.loop.create_task(auto_scrape_loop())
@@ -3642,8 +3899,9 @@ async def _handle_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # Only allowed channels
-    if not is_allowed_channel(message.channel.id, message.channel):
+    # Only allowed channels — except slash commands, which Discord already
+    # scopes via the command permissions and can run anywhere staff invoke them.
+    if not is_allowed_channel(message.channel.id, message.channel) and not getattr(message, "_from_slash", False):
         return
 
     # If this channel is waiting for a confirmation reply, suppress messages from
