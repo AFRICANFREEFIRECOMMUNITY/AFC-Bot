@@ -633,12 +633,15 @@ class EventApprovalView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    # discord.py 2.x passes (interaction, button) — py-cord's (button, interaction)
+    # order silently receives the Button as `interaction` and crashes before the
+    # click is acknowledged, so Discord shows "This interaction failed".
     @discord.ui.button(label="✅ Approve", style=discord.ButtonStyle.success, custom_id="afc_event_approve")
-    async def approve(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._handle(interaction, approved=True)
 
     @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.danger, custom_id="afc_event_reject")
-    async def reject(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._handle(interaction, approved=False)
 
     async def _handle(self, interaction: discord.Interaction, approved: bool):
