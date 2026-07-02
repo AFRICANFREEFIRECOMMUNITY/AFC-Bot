@@ -14,7 +14,15 @@ import os
 import sys
 import shutil
 
-KNOWLEDGE_DIR = "knowledge"
+# Keep emoji prints from crashing a non-UTF-8 console (e.g. Windows cp1252)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+# Anchor to the script's folder (same as bot.py) — a cwd-relative "knowledge"
+# would silently drop docs into <cwd>/knowledge where the bot never reads them.
+KNOWLEDGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge")
 
 
 def list_docs():
