@@ -28,6 +28,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 #   FALLBACK_BASE_URL  – its OpenAI-compatible endpoint, e.g. https://api.groq.com/openai/v1
 #   FALLBACK_MODEL     – model for normal replies   (default: llama-3.3-70b-versatile)
 #   FALLBACK_MINI_MODEL– model for the cheap classifier (defaults to FALLBACK_MODEL)
+#   FALLBACK2_*        – an OPTIONAL second fallback (same four keys with a "2"
+#     suffix), tried only if FALLBACK also fails. Providers run as a chain:
+#     primary → FALLBACK → FALLBACK2, so the bot goes dark only when every one is
+#     down. Gemini works here as an OpenAI-compatible provider — base_url
+#     https://generativelanguage.googleapis.com/v1beta/openai/ with a 2.5-flash
+#     model; its thinking is auto-disabled per request (see _call_fallback_provider).
 #   FALLBACK_MAX_PROMPT_CHARS – cap on the chars sent to the fallback so the full
 #     knowledge base (~32k tokens) doesn't blow past a free-tier per-minute token
 #     limit (e.g. Groq 70b = 12k TPM → otherwise a hard 413 on every reply).
@@ -35,6 +41,12 @@ FALLBACK_API_KEY    = os.getenv("FALLBACK_API_KEY")
 FALLBACK_BASE_URL   = os.getenv("FALLBACK_BASE_URL")
 FALLBACK_MODEL      = os.getenv("FALLBACK_MODEL", "llama-3.3-70b-versatile")
 FALLBACK_MINI_MODEL = os.getenv("FALLBACK_MINI_MODEL", FALLBACK_MODEL)
+
+FALLBACK2_API_KEY    = os.getenv("FALLBACK2_API_KEY")
+FALLBACK2_BASE_URL   = os.getenv("FALLBACK2_BASE_URL")
+FALLBACK2_MODEL      = os.getenv("FALLBACK2_MODEL", "llama-3.3-70b-versatile")
+FALLBACK2_MINI_MODEL = os.getenv("FALLBACK2_MINI_MODEL", FALLBACK2_MODEL)
+
 FALLBACK_MAX_PROMPT_CHARS = int(os.getenv("FALLBACK_MAX_PROMPT_CHARS", "28000"))
 
 # Marks where the bulky knowledge dump begins in build_system_prompt(). Everything
@@ -179,13 +191,28 @@ VIDEO_TYPES = (".mov", ".avi", ".mkv")
 # ─────────────────────────────────────────────────────────────────────────────
 
 client_ai = OpenAI(api_key=OPENAI_API_KEY)
-# Backup AI client — only built when fallback env vars are set (see config above).
-client_fallback = (
-    OpenAI(api_key=FALLBACK_API_KEY, base_url=FALLBACK_BASE_URL)
-    if FALLBACK_API_KEY and FALLBACK_BASE_URL else None
-)
-if client_fallback:
-    print(f"✅ Fallback AI provider configured ({FALLBACK_BASE_URL}, model={FALLBACK_MODEL})")
+# Backup AI provider chain — each entry built only when its env vars are set.
+# Requests fail over through this list in order (FALLBACK first, then FALLBACK2),
+# so the bot only goes dark when the primary AND every configured fallback is down.
+def _make_fallback_provider(api_key, base_url, model, mini_model):
+    if not (api_key and base_url):
+        return None
+    return {
+        "client": OpenAI(api_key=api_key, base_url=base_url),
+        "model": model,
+        "mini_model": mini_model,
+        "base_url": base_url,
+        # Gemini 2.5 flash are "thinking" models; flagged so _call_fallback_provider
+        # disables reasoning per request (else a small max_tokens yields no text).
+        "is_gemini": "generativelanguage.googleapis.com" in base_url,
+    }
+
+FALLBACK_PROVIDERS = [p for p in (
+    _make_fallback_provider(FALLBACK_API_KEY,  FALLBACK_BASE_URL,  FALLBACK_MODEL,  FALLBACK_MINI_MODEL),
+    _make_fallback_provider(FALLBACK2_API_KEY, FALLBACK2_BASE_URL, FALLBACK2_MODEL, FALLBACK2_MINI_MODEL),
+) if p]
+for _p in FALLBACK_PROVIDERS:
+    print(f"✅ Fallback AI provider configured ({_p['base_url']}, model={_p['model']})")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -1371,6 +1398,14 @@ The team list is NOT in this prompt. Use the live tools for anything about AFC t
 - If a tool returns no match or is unavailable, ask the user to confirm the exact team name, or point them to <#{SUPPORT_CHANNEL_ID}>.
 - NEVER invent team names, players, usernames, counts, or roles. Only state what the tools return.
 
+=== RECRUITING PLAYERS & FINDING TEAMMATES (use the Player Market) ===
+When someone asks where to recruit players for their team, find teammates, fill an open roster slot, or join a team as a free agent → the answer is the AFC Player Market, NEVER the support/moderation channel.
+Player Market: https://africanfreefirecommunity.com/a/player-markets
+- A team recruiting players: log in → open the Player Market → "Team Listings" tab → "Create Listing" and set the position needed, requirements, and trial period. The listing goes live for players to apply.
+- A player who wants to be recruited (free agent): log in → open the Player Market → "Player Listings" tab → "List Yourself" with your in-game role, stats, and availability. Teams can then contact you for a trial.
+- Players can also apply to open teams directly at https://africanfreefirecommunity.com/teams — open the team's card and click "Apply to Join".
+NEVER tell a user to recruit players, find teammates, or list themselves "in" or "through" the support/moderation channel — that channel is for human help only, not recruitment.
+
 === HANDLING VAGUE OR UNCLEAR MESSAGES ===
 When a message is vague, ambiguous, or missing key details — DO NOT ignore it and DO NOT guess.
 Instead, ask a short, friendly clarifying question to understand what they need. Examples:
@@ -1386,6 +1421,8 @@ Keep clarifying questions short (1-2 sentences max) and warm.
 
 === THE SUPPORT CHANNEL — ALWAYS REFER PEOPLE THERE WHEN STUCK ===
 The official AFC support/moderation channel is <#{SUPPORT_CHANNEL_ID}>. This is where humans handle anything you cannot resolve.
+
+⚠️ CRITICAL — the support channel is for HUMAN HELP ONLY. It is NOT a feature, a venue, or the answer to a "where do I do X" question. NEVER tell users to recruit players, find teammates, register for a tournament, join or create a team, buy items, or complete any task "in" or "through" <#{SUPPORT_CHANNEL_ID}>. For the task itself, always point them to the correct page or tool; mention the support channel only as the place a human can help IF they get stuck.
 
 There are TWO ways to point users at support, and you should use them generously:
 
@@ -2097,49 +2134,75 @@ def _truncate_for_fallback(messages: list, max_chars: int = FALLBACK_MAX_PROMPT_
     return _strip_orphan_tool_msgs(msgs)
 
 
+def _call_fallback_provider(provider, kwargs, primary_exc):
+    """Send one request to a single fallback provider, applying prompt truncation,
+    Gemini thinking-disable, and the tools-400 / size-413 one-shot retries. Raises
+    on failure so the caller can advance to the next provider in the chain."""
+    client = provider["client"]
+    fb_kwargs = dict(kwargs)
+    fb_kwargs["model"] = (
+        provider["mini_model"] if kwargs.get("model") == "gpt-4o-mini" else provider["model"]
+    )
+    # Gemini 2.5 flash are thinking models: without this they spend the whole
+    # max_tokens budget on hidden reasoning and return empty content (the 5-token
+    # classifier and short replies come back blank). "none" turns thinking off.
+    if provider["is_gemini"]:
+        fb_kwargs["reasoning_effort"] = "none"
+    # Free-tier fallbacks have a tight per-request token cap; the full
+    # knowledge base would 413. Shrink the prompt to fit before sending.
+    if "messages" in fb_kwargs:
+        fb_kwargs["messages"] = _truncate_for_fallback(fb_kwargs["messages"])
+    print(
+        f"⚠️  Primary AI unavailable ({primary_exc}) — failing over to fallback "
+        f"provider ({provider['base_url']}, model={fb_kwargs['model']})"
+    )
+    try:
+        return client.chat.completions.create(**fb_kwargs)
+    except Exception as fb_exc:
+        status = getattr(fb_exc, "status_code", None) or getattr(fb_exc, "status", None)
+        # Some OpenAI-compatible providers reject tools/tool_choice with a 400.
+        # Retry once without them so failover still produces an answer.
+        if status == 400 and ("tools" in fb_kwargs or "tool_choice" in fb_kwargs):
+            fb_kwargs.pop("tools", None)
+            fb_kwargs.pop("tool_choice", None)
+            print("⚠️  Fallback provider rejected tools — retrying without tools")
+            return client.chat.completions.create(**fb_kwargs)
+        # Still too large for the provider's token-per-minute cap — trim harder
+        # (half the budget) and retry once so a reply still goes out.
+        if status == 413 and "messages" in fb_kwargs:
+            fb_kwargs["messages"] = _truncate_for_fallback(
+                fb_kwargs["messages"], max_chars=max(4000, FALLBACK_MAX_PROMPT_CHARS // 2)
+            )
+            print("⚠️  Fallback provider 413 (request too large) — retrying with harder truncation")
+            return client.chat.completions.create(**fb_kwargs)
+        raise
+
+
 def _chat_completion(**kwargs):
-    """Create a chat completion on the primary provider, failing over to the
-    configured fallback provider when the primary is unusable (quota/rate, 5xx
-    outage, network/timeout, dead key). Re-raises if there is no fallback, the
-    error isn't failover-eligible (e.g. a 400 bad request), or the fallback also
-    fails."""
+    """Create a chat completion on the primary provider, failing over through the
+    configured fallback chain (FALLBACK → FALLBACK2) when the primary is unusable
+    (quota/rate, 5xx outage, network/timeout, dead key). Re-raises if there is no
+    usable fallback, the error isn't failover-eligible (e.g. a 400 bad request),
+    or every provider in the chain also fails."""
     try:
         return client_ai.chat.completions.create(**kwargs)
     except Exception as exc:
-        if client_fallback is None or not _should_failover(exc):
+        if not FALLBACK_PROVIDERS or not _should_failover(exc):
             raise
-        fb_kwargs = dict(kwargs)
-        fb_kwargs["model"] = (
-            FALLBACK_MINI_MODEL if kwargs.get("model") == "gpt-4o-mini" else FALLBACK_MODEL
-        )
-        # Free-tier fallbacks have a tight per-request token cap; the full
-        # knowledge base would 413. Shrink the prompt to fit before sending.
-        if "messages" in fb_kwargs:
-            fb_kwargs["messages"] = _truncate_for_fallback(fb_kwargs["messages"])
-        print(
-            f"⚠️  Primary AI unavailable ({exc}) — failing over to fallback "
-            f"provider (model={fb_kwargs['model']})"
-        )
-        try:
-            return client_fallback.chat.completions.create(**fb_kwargs)
-        except Exception as fb_exc:
-            status = getattr(fb_exc, "status_code", None) or getattr(fb_exc, "status", None)
-            # Some OpenAI-compatible providers reject tools/tool_choice with a 400.
-            # Retry once without them so failover still produces an answer.
-            if status == 400 and ("tools" in fb_kwargs or "tool_choice" in fb_kwargs):
-                fb_kwargs.pop("tools", None)
-                fb_kwargs.pop("tool_choice", None)
-                print("⚠️  Fallback provider rejected tools — retrying without tools")
-                return client_fallback.chat.completions.create(**fb_kwargs)
-            # Still too large for the provider's token-per-minute cap — trim harder
-            # (half the budget) and retry once so a reply still goes out.
-            if status == 413 and "messages" in fb_kwargs:
-                fb_kwargs["messages"] = _truncate_for_fallback(
-                    fb_kwargs["messages"], max_chars=max(4000, FALLBACK_MAX_PROMPT_CHARS // 2)
-                )
-                print("⚠️  Fallback provider 413 (request too large) — retrying with harder truncation")
-                return client_fallback.chat.completions.create(**fb_kwargs)
-            raise
+        last_exc = exc
+        for provider in FALLBACK_PROVIDERS:
+            try:
+                return _call_fallback_provider(provider, kwargs, exc)
+            except Exception as fb_exc:
+                last_exc = fb_exc
+                # This fallback is down too — advance to the next in the chain only
+                # if the failure is the kind a different provider could actually fix.
+                if _should_failover(fb_exc):
+                    print(f"⚠️  Fallback provider ({provider['base_url']}) unavailable ({fb_exc}) — trying next in chain")
+                    continue
+                raise
+        # Every provider in the chain failed with a failover-eligible error.
+        raise last_exc
 
 
 def _should_send_down_notice(channel_id: int) -> bool:
