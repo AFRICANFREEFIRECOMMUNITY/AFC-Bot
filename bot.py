@@ -1,5 +1,6 @@
 import discord
 import os
+import sys
 import glob
 import re
 import tempfile
@@ -10,6 +11,13 @@ from datetime import datetime, timezone
 from openai import OpenAI, RateLimitError, APIStatusError, APIConnectionError, APITimeoutError
 from dotenv import load_dotenv
 import base64
+
+# Keep emoji prints from crashing a non-UTF-8 console (e.g. Windows cp1252 when
+# stdout is piped/redirected) — same guard as scrape_site.py / scrape_knowledge.py.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 load_dotenv()
 
@@ -190,7 +198,9 @@ AUDIO_TYPES = (".mp3", ".mp4", ".wav", ".m4a", ".ogg", ".webm", ".flac")
 VIDEO_TYPES = (".mov", ".avi", ".mkv")
 # ─────────────────────────────────────────────────────────────────────────────
 
-client_ai = OpenAI(api_key=OPENAI_API_KEY)
+# Bounded timeout + single retry — openai-python's defaults (600s read timeout,
+# 2 retries) would let one hung request stall a reply for up to ~30 minutes.
+client_ai = OpenAI(api_key=OPENAI_API_KEY, timeout=60.0, max_retries=1)
 # Backup AI provider chain — each entry built only when its env vars are set.
 # Requests fail over through this list in order (FALLBACK first, then FALLBACK2),
 # so the bot only goes dark when the primary AND every configured fallback is down.
@@ -198,7 +208,7 @@ def _make_fallback_provider(api_key, base_url, model, mini_model):
     if not (api_key and base_url):
         return None
     return {
-        "client": OpenAI(api_key=api_key, base_url=base_url),
+        "client": OpenAI(api_key=api_key, base_url=base_url, timeout=60.0, max_retries=1),
         "model": model,
         "mini_model": mini_model,
         "base_url": base_url,
@@ -216,6 +226,11 @@ for _p in FALLBACK_PROVIDERS:
 
 intents = discord.Intents.default()
 intents.message_content = True
+# Required for guild.chunk() / guild.members iteration (mass role actions,
+# purge-by-role, single-user role lookups). The privileged "Server Members
+# Intent" toggle must be ON in the Discord Developer Portal (same page as the
+# Message Content Intent) or the bot will refuse to start.
+intents.members = True
 bot = discord.Client(intents=intents)
 
 # In-memory history — loaded from file on startup
@@ -283,10 +298,13 @@ def touch_channel(channel_id: int):
 
 
 def trim_channel_history(channel_id: int):
-    """Keep only the last MAX_HISTORY messages for a channel."""
+    """Keep only the last MAX_HISTORY messages for a channel. Trims IN PLACE —
+    rebinding the dict value would orphan any local reference captured before the
+    trim (ask_openai_text holds one across the AI call), silently dropping every
+    assistant reply appended after a trim once a channel reaches MAX_HISTORY."""
     msgs = get_channel_messages(channel_id)
     if len(msgs) > MAX_HISTORY:
-        history[str(channel_id)]["messages"] = msgs[-MAX_HISTORY:]
+        msgs[:] = msgs[-MAX_HISTORY:]
 
 
 async def auto_purge_loop():
@@ -298,13 +316,29 @@ async def auto_purge_loop():
 
 
 async def keep_typing(channel: discord.abc.Messageable, stop_event: asyncio.Event):
-    """Re-send typing indicator every 8 seconds so it never expires during long AI calls."""
+    """Re-send typing indicator every 8 seconds so it never expires during long AI calls.
+    (discord.py 2.x: awaiting channel.typing() sends one ~10s indicator; the old
+    trigger_typing() was removed in 2.0 and silently AttributeError'd forever.)"""
     while not stop_event.is_set():
         try:
-            await channel.trigger_typing()
+            await channel.typing()
         except Exception:
             pass
         await asyncio.sleep(8)
+
+
+async def _reply_chunked(message: discord.Message, text: str, mention_author: bool = True):
+    """Reply within Discord's 2000-char content limit, splitting long text across
+    follow-up messages instead of failing the whole send with a 400. Returns the
+    first sent message (for last-bot-message tracking)."""
+    first = None
+    for i in range(0, len(text), 2000):
+        chunk = text[i:i + 2000]
+        if first is None:
+            first = await message.reply(chunk, mention_author=mention_author)
+        else:
+            await message.channel.send(chunk)
+    return first
 
 
 def _do_scrape() -> int:
@@ -359,19 +393,22 @@ def save_seen_news(seen: set):
         print(f"⚠️  Could not save seen_news.json: {e}")
 
 
-async def fetch_all_news() -> list:
-    """Call the AFC API and return the list of news article dicts, newest first."""
+async def fetch_all_news() -> list | None:
+    """Call the AFC API and return the list of news article dicts, newest first.
+    Returns None when the API is unavailable — callers must distinguish 'API
+    down' from 'genuinely zero articles' or a boot-time outage would seed an
+    empty seen-set and @everyone-spam the whole backlog on recovery."""
     url = f"{AFC_API_BASE}/auth/get-all-news/"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
-                    return []
+                    return None
                 data = await resp.json()
                 return data.get("news", [])
     except Exception as e:
         print(f"⚠️  fetch_all_news failed: {e}")
-        return []
+        return None
 
 
 async def generate_news_embed(article: dict) -> discord.Embed:
@@ -404,7 +441,7 @@ Output ONLY valid JSON (no markdown fences):
 {{"body": "..."}}
 """
     try:
-        response = _chat_completion(
+        response = await _achat(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
@@ -434,19 +471,30 @@ async def news_poll_loop():
     """Background task — polls the AFC API every NEWS_POLL_INTERVAL_SECS for new articles."""
     await bot.wait_until_ready()
 
-    # On first boot, mark all existing articles as already seen so we don't
-    # flood the channel with old news on every restart.
     seen = load_seen_news()
-    if not seen:
-        articles = await fetch_all_news()
-        seen = {str(a["news_id"]) for a in articles}
-        save_seen_news(seen)
-        print(f"📰  News poll: seeded {len(seen)} existing article(s). Watching for new ones.")
+    # File existence is the durable "already seeded" sentinel (same rationale as
+    # the ban loop): a failed fetch at boot must not seed an empty set — the
+    # whole backlog would @everyone-spam once the API recovers — and a
+    # legitimately-empty seed must not re-seed on the next restart.
+    seeded = os.path.exists(SEEN_NEWS_FILE)
 
     while not bot.is_closed():
         await asyncio.sleep(NEWS_POLL_INTERVAL_SECS)
         try:
             articles = await fetch_all_news()
+            if articles is None:
+                # API unavailable this cycle — skip without touching state.
+                continue
+
+            if not seeded:
+                # First successful poll — mark existing articles as already seen
+                # so we don't flood the channel with old news.
+                seen = {str(a["news_id"]) for a in articles}
+                save_seen_news(seen)
+                seeded = True
+                print(f"📰  News poll: seeded {len(seen)} existing article(s) on first successful poll. Watching for new ones.")
+                continue
+
             new_articles = [a for a in articles if str(a["news_id"]) not in seen]
 
             if new_articles:
@@ -460,12 +508,13 @@ async def news_poll_loop():
                         embed = await generate_news_embed(article)
                         await news_channel.send(content="@everyone", embed=embed)
                         seen.add(str(article["news_id"]))
+                        # Persist per send — a crash/deploy mid-batch must not
+                        # re-announce already-posted articles with @everyone.
+                        save_seen_news(seen)
                         print(f"📰  Announced news: {article.get('news_title', article['news_id'])}")
                         await asyncio.sleep(2)   # small gap between multiple posts
                     except Exception as e:
                         print(f"⚠️  Failed to post news {article.get('news_id')}: {e}")
-
-                save_seen_news(seen)
 
         except Exception as e:
             print(f"⚠️  news_poll_loop error: {e}")
@@ -558,19 +607,60 @@ def is_organizer_event(event: dict) -> bool:
     return org.lower() != "african freefire community"
 
 
-async def fetch_all_events() -> list:
-    """Uses the existing public events endpoint — no backend changes needed."""
+# event_type ('internal'/'external') exists ONLY on the get-event-details
+# endpoint — the get-all-events list payload has no such field (verified against
+# the live API), so it must be resolved per event. Cached in-memory per event_id;
+# the cache clears on restart, so a later external→internal flip is picked up on
+# the next deploy/restart at worst.
+_event_type_cache: dict[str, str] = {}
+
+
+async def get_event_type(event: dict) -> str:
+    """Resolve an event's type ('internal'/'external'); returns '' when unknown
+    (backend unreachable) so callers can fail closed and retry next poll."""
+    etype = (event.get("event_type") or "").strip().lower()
+    if etype:
+        return etype
+    eid = str(event.get("event_id"))
+    if eid in _event_type_cache:
+        return _event_type_cache[eid]
+    slug = event.get("slug")
+    if not slug:
+        return ""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{AFC_API_BASE}/events/get-event-details/",
+                json={"slug": slug},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return ""
+                data = await resp.json()
+        etype = ((data.get("event_details") or {}).get("event_type") or "").strip().lower()
+        if etype:
+            _event_type_cache[eid] = etype
+        return etype
+    except Exception as e:
+        print(f"⚠️  Could not fetch event_type for {slug}: {e}")
+        return ""
+
+
+async def fetch_all_events() -> list | None:
+    """Uses the existing public events endpoint — no backend changes needed.
+    Returns None when the API is unavailable so callers can distinguish 'API
+    down' from 'zero events' (keeps the last good cache, prevents bad seeding)."""
     url = f"{AFC_API_BASE}/events/get-all-events/"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
-                    return []
+                    return None
                 data = await resp.json()
                 return data.get("events", [])
     except Exception as e:
         print(f"⚠️  fetch_all_events failed: {e}")
-        return []
+        return None
 
 
 async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
@@ -779,44 +869,49 @@ async def event_poll_loop():
 
     seen = load_seen_events()
     event_statuses = _load_event_statuses()
-
-    if not seen:
-        events = await fetch_all_events()
-        _cached_events = events
-        # Only seed INTERNAL, AFC-run events. Externals stay unseen so a flip to
-        # internal announces like new. Organizer events are also left unseen on
-        # purpose, so the first real poll routes them through the approval gate
-        # instead of leaking later via an un-gated status-change embed.
-        seen = {
-            str(e["event_id"]) for e in events
-            if e.get("event_type") != "external" and not is_organizer_event(e)
-        }
-        save_seen_events(seen)
-        # Seed statuses on first boot so we don't spam status changes (seeded events only)
-        for e in events:
-            if e.get("event_type") == "external" or is_organizer_event(e):
-                continue
-            eid = str(e["event_id"])
-            status = e.get("event_status", "")
-            if status:
-                event_statuses[eid] = status
-        _save_event_statuses(event_statuses)
-        print(f"🎮  Event poll: seeded {len(seen)} existing event(s). Watching for new ones.")
+    # File existence is the durable "already seeded" sentinel (same rationale as
+    # the ban loop): a failed fetch at boot must not seed an empty set — every
+    # existing event would flood the mods channel with approval requests once
+    # the API recovers — and a legitimately-empty seed must not re-seed later.
+    seeded = os.path.exists(SEEN_EVENTS_FILE)
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
         try:
             events = await fetch_all_events()
+            if events is None:
+                # API unavailable this cycle — keep the last good cache (the
+                # system prompt keeps answering from it) and touch no state.
+                continue
             _cached_events = events  # Always refresh the cache for the system prompt
 
+            if not seeded:
+                # First successful poll — seed current events as already-seen so
+                # the backlog isn't announced. Only INTERNAL, AFC-run events are
+                # seeded: externals stay unseen so a flip to internal announces
+                # like new, and organizer events stay unseen so the first real
+                # poll routes them through the approval gate.
+                for e in events:
+                    if is_organizer_event(e):
+                        continue
+                    if (await get_event_type(e)) == "external":
+                        continue
+                    eid = str(e["event_id"])
+                    seen.add(eid)
+                    status = e.get("event_status", "")
+                    if status:
+                        event_statuses[eid] = status
+                save_seen_events(seen)
+                _save_event_statuses(event_statuses)
+                seeded = True
+                print(f"🎮  Event poll: seeded {len(seen)} existing event(s) on first successful poll. Watching for new ones.")
+                continue
+
             # ── Announce NEW events ──
-            # Skip external events. They never enter `seen`, so if an event later
-            # flips from external → internal it will be announced like a new event.
             pending_ids = _pending_event_ids()
             new_events = [
                 e for e in events
                 if str(e["event_id"]) not in seen
-                and e.get("event_type") != "external"
                 and str(e["event_id"]) not in _rejected_event_ids
                 and str(e["event_id"]) not in pending_ids
             ]
@@ -824,6 +919,14 @@ async def event_poll_loop():
             for event in reversed(new_events):
                 eid = str(event["event_id"])
                 try:
+                    # get-all-events carries no event_type — resolve it via the
+                    # details endpoint (cached per event_id). External events are
+                    # never announced; they stay unseen so a flip to internal
+                    # announces like new. '' = backend couldn't say — skip WITHOUT
+                    # marking seen so the event is retried next poll, never leaked.
+                    etype = await get_event_type(event)
+                    if etype == "external" or not etype:
+                        continue
                     # Every new event — AFC-run/admin and partner-organizer alike —
                     # is held for admin approval in the mods channel; nothing is
                     # posted publicly until an admin approves it.
@@ -831,23 +934,32 @@ async def event_poll_loop():
                     seen.add(eid)
                     # Seed the status so we don't also fire a status-change for new events
                     event_statuses[eid] = event.get("event_status", "")
+                    # Persist per event — a crash/deploy mid-batch must not
+                    # re-request approval for already-posted events on restart.
+                    save_seen_events(seen)
+                    _save_event_statuses(event_statuses)
                     await asyncio.sleep(2)
                 except Exception as e:
                     print(f"⚠️  Failed to handle new event {eid}: {e}")
 
-            if new_events:
-                save_seen_events(seen)
-                # Persist seeded statuses too, so a restart while an event is pending
-                # approval doesn't later swallow its first real status-change embed.
-                _save_event_statuses(event_statuses)
-
             # ── Detect STATUS CHANGES on existing events ──
             statuses_changed = False
             for event in events:
-                # Don't announce status changes on external events.
-                if event.get("event_type") == "external":
-                    continue
                 eid = str(event.get("event_id"))
+                # Don't announce status changes on external events (resolved via
+                # the details endpoint — the list payload has no event_type).
+                # Track their status silently so a later flip to internal doesn't
+                # announce stale news; on '' (backend unreachable) skip without
+                # updating so the change is retried next poll (fail closed).
+                etype = await get_event_type(event)
+                if not etype:
+                    continue
+                if etype == "external":
+                    ext_status = event.get("event_status", "")
+                    if ext_status and event_statuses.get(eid) != ext_status:
+                        event_statuses[eid] = ext_status
+                        statuses_changed = True
+                    continue
                 # Rejected events are permanently suppressed — never announce.
                 if eid in _rejected_event_ids:
                     continue
@@ -1046,7 +1158,9 @@ async def build_ban_embed(parsed: dict) -> discord.Embed:
     if is_ban and parsed.get("duration"):
         embed.add_field(name="Duration", value=parsed["duration"], inline=True)
     if is_ban and parsed.get("reason") and parsed["reason"] != "No reason provided":
-        embed.add_field(name="Reason", value=parsed["reason"], inline=False)
+        # Discord rejects embed field values over 1024 chars with a 400 — and the
+        # per-activity retry would then re-fail every poll cycle forever.
+        embed.add_field(name="Reason", value=parsed["reason"][:1024], inline=False)
 
     # Robustness: if the backend changed its description wording and parsing missed
     # the name, include the raw activity text so the announcement never loses info.
@@ -1076,7 +1190,7 @@ async def build_ban_embed(parsed: dict) -> discord.Embed:
                     lines.append(f"• {username}" + (f" — {role}" if role else ""))
                 embed.add_field(
                     name=f"Team Members ({len(members)})",
-                    value="\n".join(lines) or "—",
+                    value=("\n".join(lines) or "—")[:1024],
                     inline=False
                 )
 
@@ -1146,6 +1260,23 @@ async def ban_poll_loop():
 
 
 # ── Knowledge base loader ────────────────────────────────────────────────────
+# Parsed-document cache keyed path → (mtime, text). PDFs/DOCX/XLSX are expensive
+# to parse (a ~300KB PDF costs 0.5-2s) and load_knowledge runs on EVERY reply —
+# re-parse only when the file actually changes on disk, so content updates still
+# land without a restart but steady-state replies stop paying the parse cost.
+_parsed_doc_cache: dict[str, tuple[float, str]] = {}
+
+
+def _parse_cached(filepath: str, parser) -> str:
+    mtime = os.path.getmtime(filepath)
+    cached = _parsed_doc_cache.get(filepath)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    text = parser(filepath)
+    _parsed_doc_cache[filepath] = (mtime, text)
+    return text
+
+
 def load_knowledge() -> str:
     knowledge_parts = []
 
@@ -1170,9 +1301,13 @@ def load_knowledge() -> str:
             try:
                 import pdfplumber
                 fname = os.path.basename(filepath)
-                with pdfplumber.open(filepath) as pdf:
-                    pages = [page.extract_text() or "" for page in pdf.pages]
-                text = "\n\n".join(p for p in pages if p.strip())
+
+                def _parse_pdf(p):
+                    with pdfplumber.open(p) as pdf:
+                        pages = [page.extract_text() or "" for page in pdf.pages]
+                    return "\n\n".join(x for x in pages if x.strip())
+
+                text = _parse_cached(filepath, _parse_pdf)
                 if text:
                     knowledge_parts.append(f"=== UPLOADED PDF: {fname} ===\n{text}")
             except ImportError:
@@ -1188,9 +1323,12 @@ def load_knowledge() -> str:
             try:
                 import mammoth
                 fname = os.path.basename(filepath)
-                with open(filepath, "rb") as f:
-                    result = mammoth.extract_raw_text(f)
-                text = result.value.strip()
+
+                def _parse_docx(p):
+                    with open(p, "rb") as f:
+                        return mammoth.extract_raw_text(f).value.strip()
+
+                text = _parse_cached(filepath, _parse_docx)
                 if text:
                     knowledge_parts.append(f"=== UPLOADED WORD DOC: {fname} ===\n{text}")
             except ImportError:
@@ -1206,19 +1344,23 @@ def load_knowledge() -> str:
             try:
                 import openpyxl
                 fname = os.path.basename(filepath)
-                wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
-                sections = []
-                for sheet in wb.sheetnames:
-                    ws = wb[sheet]
-                    rows = []
-                    for row in ws.iter_rows(values_only=True):
-                        clean = [str(c) if c is not None else "" for c in row]
-                        if any(c.strip() for c in clean):
-                            rows.append("\t".join(clean))
-                    if rows:
-                        sections.append(f"[Sheet: {sheet}]\n" + "\n".join(rows))
-                wb.close()
-                text = "\n\n".join(sections)
+
+                def _parse_xlsx(p):
+                    wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+                    sections = []
+                    for sheet in wb.sheetnames:
+                        ws = wb[sheet]
+                        rows = []
+                        for row in ws.iter_rows(values_only=True):
+                            clean = [str(c) if c is not None else "" for c in row]
+                            if any(c.strip() for c in clean):
+                                rows.append("\t".join(clean))
+                        if rows:
+                            sections.append(f"[Sheet: {sheet}]\n" + "\n".join(rows))
+                    wb.close()
+                    return "\n\n".join(sections)
+
+                text = _parse_cached(filepath, _parse_xlsx)
                 if text:
                     knowledge_parts.append(f"=== UPLOADED SPREADSHEET: {fname} ===\n{text}")
             except ImportError:
@@ -1698,7 +1840,7 @@ If the admin says "exact", "dont remove", "do not remove", "use exactly", "keep 
 {knowledge}
 """
 
-    response = _chat_completion(
+    response = await _achat(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system},
@@ -2198,14 +2340,23 @@ def _chat_completion(**kwargs):
                 return _call_fallback_provider(provider, kwargs, exc)
             except Exception as fb_exc:
                 last_exc = fb_exc
-                # This fallback is down too — advance to the next in the chain only
-                # if the failure is the kind a different provider could actually fix.
-                if _should_failover(fb_exc):
-                    print(f"⚠️  Fallback provider ({provider['base_url']}) unavailable ({fb_exc}) — trying next in chain")
-                    continue
-                raise
-        # Every provider in the chain failed with a failover-eligible error.
+                # Advance to the next provider on ANY failure — a 400/404 from a
+                # fallback is usually provider-specific (decommissioned default
+                # model, bad FALLBACK_MODEL name), which the next provider in the
+                # chain (with its own model) may well fix. Re-raising here would
+                # make FALLBACK2 unreachable behind a misconfigured FALLBACK.
+                print(f"⚠️  Fallback provider ({provider['base_url']}) failed ({fb_exc}) — trying next in chain")
+                continue
+        # Every provider in the chain failed.
         raise last_exc
+
+
+async def _achat(**kwargs):
+    """Async wrapper for _chat_completion — runs the blocking OpenAI SDK call in
+    a worker thread so the event loop (gateway heartbeat, poll loops, button
+    interactions, other users' replies) never freezes while a request is in
+    flight. Use this from ALL async code paths."""
+    return await asyncio.to_thread(_chat_completion, **kwargs)
 
 
 def _should_send_down_notice(channel_id: int) -> bool:
@@ -2228,7 +2379,11 @@ def resolve_ai_error_reply(channel_id: int, exc: Exception, force: bool = False)
     # fallback or the fallback also failed. Show the clean "down" notice.
     if _should_failover(exc):
         print(f"⚠️  AI unavailable: {exc}")
-        if force or _should_send_down_notice(channel_id):
+        # Throttle check FIRST so the timestamp is always armed when due — a
+        # short-circuiting `force or ...` skipped it on forced notices, letting
+        # the very next unforced failure post a duplicate down notice seconds
+        # later. `force` still bypasses suppression.
+        if _should_send_down_notice(channel_id) or force:
             return AI_DOWN_NOTICE
         return None
     print(f"⚠️  AI call failed: {exc}")
@@ -2250,7 +2405,7 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
         if allow_tools:
             kwargs["tools"] = TEAM_TOOLS
             kwargs["tool_choice"] = "auto"
-        msg = _chat_completion(**kwargs).choices[0].message
+        msg = (await _achat(**kwargs)).choices[0].message
         tool_calls = getattr(msg, "tool_calls", None)
         if not tool_calls:
             return _normalize_links((msg.content or "").strip())
@@ -2270,9 +2425,9 @@ async def _run_chat(messages: list, allow_tools: bool = True) -> str:
             result = await _dispatch_tool(tc.function.name, tc.function.arguments)
             convo.append({"role": "tool", "tool_call_id": tc.id, "content": result})
     # Tool rounds exhausted — force a final answer with no further tools.
-    msg = _chat_completion(
+    msg = (await _achat(
         model="gpt-4o", messages=convo, max_tokens=1024, temperature=0.7
-    ).choices[0].message
+    )).choices[0].message
     return _normalize_links((msg.content or "").strip())
 
 
@@ -2298,8 +2453,11 @@ async def ask_openai_text(channel_id: int, user_text: str, username: str, is_sta
     return reply, needs_support
 
 
-async def ask_openai_with_image(channel_id: int, user_text: str, username: str, image_bytes: bytes, media_type: str, is_staff: bool = False) -> str:
-    """Send image + text to GPT-4o vision and return reply."""
+async def ask_openai_with_image(channel_id: int, user_text: str, username: str, image_bytes: bytes, media_type: str, is_staff: bool = False) -> tuple[str, bool]:
+    """Send image + text to GPT-4o vision. Returns (reply_text, needs_support_redirect)
+    — same contract as ask_openai_text, so escalations from screenshots (banned
+    account, payment issue) trigger the support redirect instead of leaking the
+    literal marker to the user."""
     msgs = get_channel_messages(channel_id)
     system_prompt = build_system_prompt(is_staff=is_staff)
 
@@ -2321,18 +2479,21 @@ async def ask_openai_with_image(channel_id: int, user_text: str, username: str, 
         ]
     }
 
-    reply = await _run_chat([
+    raw = await _run_chat([
         {"role": "system", "content": system_prompt},
         *msgs,
         vision_message,
     ])
+    needs_support = "---SUPPORT_REDIRECT---" in raw
+    reply = raw.replace("---SUPPORT_REDIRECT---", "").strip()
+
     msgs = get_channel_messages(channel_id)
     msgs.append({"role": "user", "content": f"{username}: [sent an image] {user_text}"})
     msgs.append({"role": "assistant", "content": reply})
     trim_history(channel_id)
     touch_channel(channel_id)
     save_history_to_disk()
-    return reply
+    return reply, needs_support
 
 
 async def send_support_redirect(message: discord.Message):
@@ -2355,20 +2516,26 @@ async def send_support_redirect(message: discord.Message):
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
-    """Transcribe audio using OpenAI Whisper."""
+    """Transcribe audio using OpenAI Whisper. Runs in a worker thread — the
+    multipart upload + transcription can take many seconds and must not freeze
+    the event loop."""
     ext = os.path.splitext(filename)[1].lower()
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
-    try:
-        with open(tmp_path, "rb") as audio_file:
-            transcript = client_ai.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-            )
-        return transcript.text
-    finally:
-        os.unlink(tmp_path)
+
+    def _do() -> str:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+        try:
+            with open(tmp_path, "rb") as audio_file:
+                transcript = client_ai.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                )
+            return transcript.text
+        finally:
+            os.unlink(tmp_path)
+
+    return await asyncio.to_thread(_do)
 
 
 # ── Server management helpers ────────────────────────────────────────────────
@@ -2897,7 +3064,7 @@ def parse_edit_command(text: str):
 
 async def ai_rewrite(original_text: str, instruction: str) -> str:
     """Use GPT-4o to rewrite a message based on feedback/instruction."""
-    response = _chat_completion(
+    response = await _achat(
         model="gpt-4o",
         messages=[
             {
@@ -2937,6 +3104,13 @@ WHISPER_PROMPT = (
     "Common words you may hear: wahala, abeg, oya, sabi, dey, na, wey, comot, chop, sharp sharp, "
     "e don do, no wahala, guy, bro, fam, gbege, ginger, level up, carry last, shine your eye."
 )
+
+
+# Voice receive (sinks + VoiceClient.start_recording) is a py-cord API that does
+# NOT exist in discord.py — feature-detect so the transcription flows degrade
+# gracefully (clear "not supported" message, no connect) instead of crashing
+# AFTER connect() and stranding a zombie voice connection until restart.
+VOICE_RECEIVE_SUPPORTED = hasattr(discord, "sinks") and hasattr(discord.VoiceClient, "start_recording")
 
 
 def has_transcription_role(member: discord.Member) -> bool:
@@ -3051,6 +3225,10 @@ async def _process_and_send_transcript(sink, text_channel, requester, start_time
 @bot.event
 async def on_stage_instance_create(stage: discord.StageInstance):
     """When a stage is created, ask mods if the bot should transcribe it."""
+    # Don't offer transcription at all when this build can't record voice —
+    # prompting mods and then failing after joining is worse than silence.
+    if not VOICE_RECEIVE_SUPPORTED:
+        return
     mods_channel = bot.get_channel(MODS_CHANNEL_ID)
     if not mods_channel:
         return
@@ -3088,6 +3266,7 @@ async def on_stage_instance_create(stage: discord.StageInstance):
         reply = await bot.wait_for("message", check=stage_confirm_check, timeout=120.0)
 
         if reply.content.lower().strip() in ("yes", "y"):
+            vc = None
             try:
                 vc         = await stage.channel.connect()
                 sink       = discord.sinks.WaveSink()
@@ -3110,7 +3289,16 @@ async def on_stage_instance_create(stage: discord.StageInstance):
                     f"Say `@bot stop transcribing` when the session is done."
                 )
             except Exception as e:
-                await mods_channel.send(f"⚠️ Couldn't join the stage: {e}")
+                # Never strand a live voice connection when a step after a
+                # successful connect() fails — the "stop" command can't reach it
+                # (no session entry) and the bot would sit in the stage forever.
+                if vc is not None:
+                    try:
+                        await vc.disconnect(force=True)
+                    except Exception:
+                        pass
+                    active_transcriptions.pop(stage.guild.id, None)
+                await mods_channel.send(f"⚠️ Couldn't start transcribing: {e}")
         else:
             await mods_channel.send("👍 Got it — not transcribing this stage.")
 
@@ -3121,8 +3309,16 @@ async def on_stage_instance_create(stage: discord.StageInstance):
 
 
 # ── Events ───────────────────────────────────────────────────────────────────
+# on_ready fires on EVERY gateway re-IDENTIFY (reconnect), not just first boot.
+# One-time init (background loops, persistent view, approval state) must run
+# exactly once per process or each reconnect would stack duplicate poll loops
+# and double-post every announcement.
+_bg_loops_started = False
+
+
 @bot.event
 async def on_ready():
+    global _bg_loops_started
     # Ensure knowledge folder exists
     try:
         os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
@@ -3135,10 +3331,17 @@ async def on_ready():
     # Pre-fetch events so the bot has live data from the very first message
     global _cached_events
     try:
-        _cached_events = await fetch_all_events()
+        events = await fetch_all_events()
+        if events is not None:
+            _cached_events = events
         print(f"🎮  Pre-cached {len(_cached_events)} event(s) for live Q&A")
     except Exception as e:
         print(f"⚠️  Could not pre-cache events: {e}")
+
+    if _bg_loops_started:
+        print("🔁  Reconnected — background loops already running.")
+        return
+    _bg_loops_started = True
 
     # Restore organizer-event approval state and bind the persistent buttons so
     # previews posted before this restart keep working.
@@ -3174,18 +3377,19 @@ async def on_message(message: discord.Message):
         print(f"⚠️  Unhandled error in on_message: {e}")
 
 
-# Tracks which user-message IDs the bot has already replied to (or already
-# decided NOT to reply to) so an edit can re-trigger evaluation safely.
-_handled_message_ids: set[int] = set()
+# Tracks which user-message IDs the bot has already replied to, so an edit of an
+# answered message doesn't produce a duplicate reply. Insertion-ordered dict (not
+# a set) so eviction genuinely drops the OLDEST entries.
+_handled_message_ids: dict[int, None] = {}
 _HANDLED_MAX = 2000
 
 
 def _mark_handled(message_id: int):
-    _handled_message_ids.add(message_id)
+    _handled_message_ids[message_id] = None
     if len(_handled_message_ids) > _HANDLED_MAX:
-        # Drop the oldest ~25% to keep the set bounded
+        # Drop the oldest ~25% to keep the dict bounded
         for mid in list(_handled_message_ids)[: _HANDLED_MAX // 4]:
-            _handled_message_ids.discard(mid)
+            _handled_message_ids.pop(mid, None)
 
 
 @bot.event
@@ -3278,7 +3482,7 @@ async def should_bot_respond(message_text: str, image_bytes: bytes = None, image
         else:
             user_content = message_text
 
-        response = _chat_completion(
+        response = await _achat(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3462,7 +3666,10 @@ async def _handle_message(message: discord.Message):
                     print(f"⚠️  AI unavailable during edit: {e}")
                     await message.reply(AI_DOWN_NOTICE, mention_author=True)
                 else:
-                    await message.reply(f"⚠️ Couldn't edit the message. Error: {e}", mention_author=True)
+                    # Never dump the raw exception (it can carry the provider's
+                    # full API error body) into a Discord channel.
+                    print(f"⚠️  Edit failed: {e}")
+                    await message.reply(GENERIC_ERROR_NOTICE, mention_author=True)
             return
 
     # ── Announcement command ─────────────────────────────────────────────────
@@ -3611,6 +3818,15 @@ async def _handle_message(message: discord.Message):
                 return
             finally:
                 _awaiting_confirmation.pop(message.channel.id, None)
+        else:
+            # Loop exhausted without an explicit `send` (the 5th message was yet
+            # another correction) — NEVER auto-post an announcement the admin
+            # hasn't previewed and approved.
+            await message.channel.send(
+                "❌ Too many revisions without `send` — announcement cancelled.",
+                delete_after=10
+            )
+            return
 
         # ── Actually send to target channel ──────────────────────────────────
         try:
@@ -3710,12 +3926,28 @@ async def _handle_message(message: discord.Message):
                 if not session:
                     await message.reply("❌ No active transcription session running.", mention_author=True)
                     return
-                session["vc"].stop_recording()
+                vc = session["vc"]
+                try:
+                    if hasattr(vc, "stop_recording"):
+                        vc.stop_recording()
+                    else:
+                        # Library without voice receive — just leave the channel
+                        # so the bot is never stranded in voice.
+                        await vc.disconnect(force=True)
+                except Exception as e:
+                    print(f"⚠️  stop transcription failed: {e}")
                 active_transcriptions.pop(message.guild.id, None)
                 await message.reply("⏹️ Stopped recording. Generating transcript...", mention_author=True)
                 return
 
             elif action == "start":
+                if not VOICE_RECEIVE_SUPPORTED:
+                    await message.reply(
+                        "❌ Voice transcription isn't supported in this bot build "
+                        "(the library has no voice-receive support).",
+                        mention_author=True
+                    )
+                    return
                 if message.guild.id in active_transcriptions:
                     await message.reply(
                         "❌ Already transcribing a session. Say `@bot stop transcribing` first.",
@@ -3741,6 +3973,7 @@ async def _handle_message(message: discord.Message):
                     )
                     return
 
+                vc = None
                 try:
                     vc         = await voice_ch.connect()
                     sink       = discord.sinks.WaveSink()
@@ -3767,7 +4000,15 @@ async def _handle_message(message: discord.Message):
                 except discord.ClientException:
                     await message.reply("❌ I'm already connected to a voice channel in this server.", mention_author=True)
                 except Exception as e:
-                    await message.reply(f"⚠️ Couldn't join: {e}", mention_author=True)
+                    # Never strand a live voice connection when a step after a
+                    # successful connect() fails.
+                    if vc is not None:
+                        try:
+                            await vc.disconnect(force=True)
+                        except Exception:
+                            pass
+                        active_transcriptions.pop(message.guild.id, None)
+                    await message.reply(f"⚠️ Couldn't start transcribing: {e}", mention_author=True)
                 return
 
     # ── Help command ─────────────────────────────────────────────────────────
@@ -3836,7 +4077,7 @@ async def _handle_message(message: discord.Message):
                 ),
                 inline=False,
             )
-            if is_trans:
+            if is_trans and VOICE_RECEIVE_SUPPORTED:
                 staff.add_field(
                     name="🎙️ Voice Transcription",
                     value=(
@@ -3904,7 +4145,7 @@ async def _handle_message(message: discord.Message):
                 if ch_type == "category":
                     new_ch = await guild.create_category(
                         name=ch_name,
-                        overwrites=overwrites if overwrites else None,
+                        overwrites=overwrites,
                         reason=f"AFC Bot — created by {message.author}"
                     )
                     ch_label = f"📁 Category **{new_ch.name}**"
@@ -3913,7 +4154,7 @@ async def _handle_message(message: discord.Message):
                     new_ch = await guild.create_voice_channel(
                         name=ch_name,
                         category=category,
-                        overwrites=overwrites if overwrites else None,
+                        overwrites=overwrites,
                         reason=f"AFC Bot — created by {message.author}"
                     )
                     ch_label = f"🔊 Voice channel **{new_ch.name}**"
@@ -3922,7 +4163,7 @@ async def _handle_message(message: discord.Message):
                     new_ch = await guild.create_text_channel(
                         name=ch_name,
                         category=category,
-                        overwrites=overwrites if overwrites else None,
+                        overwrites=overwrites,
                         reason=f"AFC Bot — created by {message.author}"
                     )
                     ch_label = f"💬 Channel {new_ch.mention}"
@@ -4484,6 +4725,7 @@ async def _handle_message(message: discord.Message):
         if att_type == "image":
             stop = asyncio.Event()
             asyncio.create_task(keep_typing(message.channel, stop))
+            needs_support = False
             try:
                 image_bytes = await download_attachment(attachment)
                 ext = os.path.splitext(attachment.filename)[1].lower().strip(".")
@@ -4493,13 +4735,19 @@ async def _handle_message(message: discord.Message):
                 }
                 media_type = media_type_map.get(ext, "image/jpeg")
                 prompt = user_text if user_text else "What is in this image? Give context relevant to AFC or Free Fire if applicable."
-                reply  = await ask_openai_with_image(message.channel.id, prompt, username, image_bytes, media_type, is_staff=is_staff)
+                reply, needs_support = await ask_openai_with_image(message.channel.id, prompt, username, image_bytes, media_type, is_staff=is_staff)
             except Exception as e:
                 reply = resolve_ai_error_reply(message.channel.id, e, force=is_mentioned)
             finally:
                 stop.set()
             if reply is not None:
-                await message.reply(reply, mention_author=True)
+                if not reply.strip() and not needs_support:
+                    reply = GENERIC_ERROR_NOTICE
+                if reply.strip():
+                    await _reply_chunked(message, reply)
+                _mark_handled(message.id)
+                if needs_support:
+                    await send_support_redirect(message)
             return
 
         # 🎵 AUDIO — Whisper transcription → GPT-4o reply
@@ -4523,7 +4771,14 @@ async def _handle_message(message: discord.Message):
                     reply, needs_support = await ask_openai_text(message.channel.id, combined, username, is_staff=is_staff)
                 finally:
                     stop.set()
-                await message.reply(f"🎙️ **I heard:** _{transcript}_\n\n{reply}", mention_author=True)
+                if not reply.strip():
+                    reply = GENERIC_ERROR_NOTICE
+                # Cap the quoted transcript — a long voice note plus the reply
+                # would exceed Discord's 2000-char content limit (the full text
+                # already went to the model via `combined` above).
+                quoted = transcript if len(transcript) <= 700 else transcript[:700] + "…"
+                await _reply_chunked(message, f"🎙️ **I heard:** _{quoted}_\n\n{reply}")
+                _mark_handled(message.id)
                 if needs_support:
                     await send_support_redirect(message)
             except Exception as e:
@@ -4549,7 +4804,11 @@ async def _handle_message(message: discord.Message):
             finally:
                 stop.set()
             if reply is not None:
-                await message.reply(reply, mention_author=True)
+                if not reply.strip() and not needs_support:
+                    reply = GENERIC_ERROR_NOTICE
+                if reply.strip():
+                    await _reply_chunked(message, reply)
+                _mark_handled(message.id)
                 if needs_support:
                     await send_support_redirect(message)
             return
@@ -4571,7 +4830,11 @@ async def _handle_message(message: discord.Message):
             finally:
                 stop.set()
             if reply is not None:
-                await message.reply(reply, mention_author=True)
+                if not reply.strip() and not needs_support:
+                    reply = GENERIC_ERROR_NOTICE
+                if reply.strip():
+                    await _reply_chunked(message, reply)
+                _mark_handled(message.id)
                 if needs_support:
                     await send_support_redirect(message)
             return
@@ -4599,8 +4862,20 @@ async def _handle_message(message: discord.Message):
     if reply is None:
         return
 
-    sent_reply = await message.reply(reply, mention_author=True)
-    last_bot_messages[message.channel.id] = sent_reply.id
+    if not reply.strip():
+        # Marker-only output (the model sent just the redirect marker) or an
+        # empty completion — message.reply("") would 400, and an escalation
+        # must never be dropped.
+        if needs_support:
+            await send_support_redirect(message)
+            _mark_handled(message.id)
+            return
+        reply = GENERIC_ERROR_NOTICE
+
+    sent_reply = await _reply_chunked(message, reply)
+    if sent_reply:
+        last_bot_messages[message.channel.id] = sent_reply.id
+    _mark_handled(message.id)
     if needs_support:
         await send_support_redirect(message)
 
