@@ -221,6 +221,9 @@ def _make_fallback_provider(api_key, base_url, model, mini_model):
         # Gemini 2.5 flash are "thinking" models; flagged so _call_fallback_provider
         # disables reasoning per request (else a small max_tokens yields no text).
         "is_gemini": "generativelanguage.googleapis.com" in base_url,
+        # Vision-capable fallbacks receive image content as-is; text-only ones
+        # (Groq llama) get it flattened or they reject the request with a 400.
+        "supports_vision": "generativelanguage.googleapis.com" in base_url,
     }
 
 FALLBACK_PROVIDERS = [p for p in (
@@ -2225,27 +2228,39 @@ def _strip_orphan_tool_msgs(messages: list) -> list:
     return out
 
 
-def _truncate_for_fallback(messages: list, max_chars: int = FALLBACK_MAX_PROMPT_CHARS) -> list:
-    """Shrink an oversized message list so it fits a rate-limited, text-only
-    fallback provider's per-request token budget (e.g. Groq free tier ~12k TPM).
-    The primary provider (gpt-4o, 128k context) takes the full ~32k-token
-    knowledge base, but a free-tier fallback rejects it with a hard 413. Steps:
-    (0) flatten multimodal content to text — the fallback is text-only; (1) trim
-    the knowledge dump that sits below _KNOWLEDGE_MARKER, never the rules header
-    above it; (2) drop the oldest turns if still over budget; (3) repair any
-    tool-call pair split by step 2. Returns a new list; never mutates the input.
-    A no-op when the request already fits (e.g. the tiny classifier)."""
-    total = sum(_msg_len(m) for m in messages)
-    if total <= max_chars:
-        return messages
-
+def _truncate_for_fallback(messages: list, max_chars: int = FALLBACK_MAX_PROMPT_CHARS, keep_images: bool = False) -> list:
+    """Shrink a message list so it fits a rate-limited fallback provider's
+    per-request token budget (e.g. Groq free tier ~12k TPM). The primary
+    provider (gpt-4o, 128k context) takes the full ~32k-token knowledge base,
+    but a free-tier fallback rejects it with a hard 413. Steps:
+    (0) flatten multimodal content to text UNCONDITIONALLY for text-only
+    providers — they 400 on content lists even when the request is tiny, so
+    this must happen before the under-budget early return (keep_images=True
+    lets vision-capable fallbacks like Gemini keep images while the request
+    fits); (1) trim the knowledge dump that sits below _KNOWLEDGE_MARKER,
+    never the rules header above it; (2) drop the oldest turns if still over
+    budget; (3) repair any tool-call pair split by step 2. Returns a new list;
+    never mutates the input."""
     msgs = [dict(m) for m in messages]
 
-    # 0) Flatten vision/multimodal content to its text — the fallback is text-only,
-    #    so the image bytes are unusable and must not ride along (or count) here.
-    for m in msgs:
-        if isinstance(m.get("content"), list):
-            m["content"] = _list_content_text(m["content"])
+    # 0) Flatten vision/multimodal content to its text for text-only providers.
+    if not keep_images:
+        for m in msgs:
+            if isinstance(m.get("content"), list):
+                m["content"] = _list_content_text(m["content"])
+
+    total = sum(_msg_len(m) for m in msgs)
+    if total <= max_chars:
+        return msgs
+
+    # Over budget with images kept — the image bytes are dead weight now; flatten.
+    if keep_images:
+        for m in msgs:
+            if isinstance(m.get("content"), list):
+                m["content"] = _list_content_text(m["content"])
+        total = sum(_msg_len(m) for m in msgs)
+        if total <= max_chars:
+            return msgs
 
     # 1) Trim the knowledge dump from the system prompt, preserving the rules head.
     #    Anchoring to _KNOWLEDGE_MARKER keeps the ENTIRE rules header + live events
@@ -2305,7 +2320,9 @@ def _call_fallback_provider(provider, kwargs, primary_exc):
     # Free-tier fallbacks have a tight per-request token cap; the full
     # knowledge base would 413. Shrink the prompt to fit before sending.
     if "messages" in fb_kwargs:
-        fb_kwargs["messages"] = _truncate_for_fallback(fb_kwargs["messages"])
+        fb_kwargs["messages"] = _truncate_for_fallback(
+            fb_kwargs["messages"], keep_images=provider.get("supports_vision", False)
+        )
     print(
         f"⚠️  Primary AI unavailable ({primary_exc}) — failing over to fallback "
         f"provider ({provider['base_url']}, model={fb_kwargs['model']})"
@@ -3941,9 +3958,199 @@ async def should_bot_respond(message_text: str, image_bytes: bytes = None, image
         return True  # always respond if classifier fails
 
 
+# ── Scam detection ────────────────────────────────────────────────────────────
+# Two tiers so regular chat costs nothing and nobody gets falsely accused:
+# 1. Free regex heuristic on every guild message. HARD patterns (citizenship
+#    recruiting, promo-code giveaways, "help with my business" + DM) trigger
+#    review alone; SOFT patterns (DM me, pay ranges, remote-hours, telegram)
+#    need two or more.
+# 2. A strict gpt-4o-mini SCAM/OK classifier confirms before any warning is
+#    posted — and on ANY classifier error we stay silent (never accuse on a
+#    guess). Free Fire team/squad recruiting is explicitly LEGIT in both tiers.
+# Image-only scams (fake giveaway/casino screenshots) are vision-checked when
+# a non-staff message carries an image with little or no text.
+
+_SCAM_HARD_PATTERNS = [
+    re.compile(r"\blooking\s+for\s+(?:an?\s+)?[\w\s,/]{0,40}\bcitizens?\b", re.IGNORECASE),
+    re.compile(r"\bhelp\s+(?:me\s+)?with\s+my\s+business\b", re.IGNORECASE),
+    re.compile(r"\bpromo\s*code\b", re.IGNORECASE),
+    re.compile(r"\bwithdraw(?:al)?\s+success", re.IGNORECASE),
+    re.compile(r"\bgiving\s+away\s+[$€£₦]?\s?\d", re.IGNORECASE),
+    re.compile(r"\b(?:crypto|bitcoin|usdt|binance)\b.{0,40}\b(?:casino|bonus|giveaway|invest|profit)\b", re.IGNORECASE),
+    re.compile(r"\b(?:double|triple|flip)\s+your\s+(?:money|cash|crypto|funds)\b", re.IGNORECASE),
+    re.compile(r"\bhigh[-\s]?yield\b", re.IGNORECASE),
+    re.compile(r"\bregister\b.{0,50}\b(?:bonus|reward|free\s+[$€£₦]?\d)", re.IGNORECASE),
+]
+
+_SCAM_SOFT_PATTERNS = [
+    re.compile(r"\b(?:dm|pm|inbox|message)\s+me\b", re.IGNORECASE),
+    re.compile(r"[$€£]\s?\d{2,}[^\n]{0,20}(?:month|week|day|/mo|/wk)", re.IGNORECASE),
+    re.compile(r"\b\d{1,2}\s*[–-]\s*\d{1,2}\+?\s*hours?\s*/?\s*(?:per\s+)?week\b", re.IGNORECASE),
+    re.compile(r"\bcommission[-\s]based\b", re.IGNORECASE),
+    re.compile(r"\b(?:telegram|whatsapp|t\.me/|wa\.me/)\b", re.IGNORECASE),
+    re.compile(r"\blinkedin\b", re.IGNORECASE),
+    re.compile(r"\bage\s+\d{2}\s*[–-]\s*\d{2}\b", re.IGNORECASE),
+    re.compile(r"\bno\s+experience\s+(?:needed|required)\b", re.IGNORECASE),
+    re.compile(r"\b(?:remote|work\s+from\s+home)\b", re.IGNORECASE),
+    re.compile(r"\bsend\s+your\s+(?:age|country|details|cv|resume)\b", re.IGNORECASE),
+]
+
+
+def _scam_heuristic(text: str) -> bool:
+    """True when the text looks suspicious enough to spend a classifier call."""
+    if not text:
+        return False
+    if any(p.search(text) for p in _SCAM_HARD_PATTERNS):
+        return True
+    return sum(1 for p in _SCAM_SOFT_PATTERNS if p.search(text)) >= 2
+
+
+_SCAM_CLASSIFIER_PROMPT = (
+    "You are a scam detector for an African Free Fire gaming community Discord (AFC).\n"
+    "Decide if this message is a SCAM.\n\n"
+    "Reply SCAM if it is:\n"
+    "- Recruitment targeting citizens/residents of specific countries ('looking for a Brazil or Canada citizen')\n"
+    "- 'Help with my business' / vague business-partner offers asking people to DM\n"
+    "- Vague high-paying remote jobs or commission roles, especially applying via DM with age/country/LinkedIn\n"
+    "- Crypto/casino/betting promos, promo codes, sign-up bonuses, giveaway or withdrawal screenshots\n"
+    "- Fake celebrity endorsements or sponsorships (MrBeast giveaways etc.)\n"
+    "- Money flipping, guaranteed profit, investment doubling, gift-card or wallet schemes\n"
+    "- Romance/companionship bait or 'I'll pay you to chat'\n\n"
+    "Reply OK if it is normal community content:\n"
+    "- Free Fire TEAM or SQUAD recruiting ('looking for players/recruits for my team', 'need a rusher, DM me') — this is NORMAL here, never a scam\n"
+    "- Tournament/scrim/registration talk, AFC platform questions, support requests\n"
+    "- Gaming screenshots, memes, casual chat, giveaways run by AFC staff themselves\n\n"
+    "If an image is provided, judge its content too (fake payment proofs, casino promos, giveaway posters are SCAM).\n"
+    "When unsure, reply OK — false accusations are worse than a missed scam.\n"
+    "Reply with only SCAM or OK."
+)
+
+
+async def detect_scam(message_text: str, image_bytes: bytes = None, image_media_type: str = None) -> bool:
+    """Confirm a heuristic hit with gpt-4o-mini. Errors return False — the bot
+    must never accuse someone because an API call failed."""
+    try:
+        if image_bytes and image_media_type:
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            user_content = [
+                {"type": "image_url", "image_url": {"url": f"data:{image_media_type};base64,{image_b64}"}},
+                {"type": "text", "text": message_text if message_text else "(no text — image only)"},
+            ]
+        else:
+            user_content = message_text
+        response = await _achat(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _SCAM_CLASSIFIER_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            max_tokens=5,
+            temperature=0,
+        )
+        return response.choices[0].message.content.strip().upper().startswith("SCAM")
+    except Exception as e:
+        print(f"⚠️  Scam classifier error: {e} — staying silent")
+        return False
+
+
+SCAM_WARNING_TEXT = (
+    "This message matches patterns commonly used in **scams**.\n\n"
+    "**Protect yourself — never:**\n"
+    "• DM strangers offering jobs, money, giveaways, or 'business opportunities'\n"
+    "• Click unknown links or enter promo codes from posts like this\n"
+    "• Share personal details (age, country, ID, LinkedIn) with unknown accounts\n\n"
+    "AFC staff will **never** recruit you or hand out prizes through DMs.\n"
+    "Moderators have been notified."
+)
+
+
+async def _maybe_flag_scam(message) -> bool:
+    """Screen one message. Returns True when a warning was posted (caller stops
+    processing the message)."""
+    try:
+        if message.guild is None:
+            return False
+        if message.channel.id == MODS_CHANNEL_ID:
+            return False  # mods discussing scams must not trigger it
+        author = message.author
+        roles = getattr(author, "roles", [])
+        if any(getattr(r, "id", None) in STAFF_KNOWLEDGE_ROLES for r in roles):
+            return False  # staff/mods never screened
+
+        text = message.content or ""
+        image_att = next(
+            (a for a in message.attachments if get_attachment_type(a.filename) == "image"),
+            None,
+        ) if message.attachments else None
+
+        heur_hit = _scam_heuristic(text)
+        # Image with little/no text: vision-check (catches fake giveaway /
+        # casino screenshots). Support channel excluded — it's full of
+        # legitimate problem screenshots.
+        image_check = (
+            image_att is not None
+            and len(text) < 40
+            and message.channel.id != SUPPORT_CHANNEL_ID
+        )
+        if not heur_hit and not image_check:
+            return False
+
+        image_bytes = None
+        media_type = None
+        if image_att is not None:
+            ext = os.path.splitext(image_att.filename)[1].lower().strip(".")
+            media_type = {
+                "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "png": "image/png", "gif": "image/gif", "webp": "image/webp",
+            }.get(ext, "image/jpeg")
+            try:
+                image_bytes = await download_attachment(image_att)
+            except Exception:
+                image_bytes = None
+
+        if not await detect_scam(text, image_bytes, media_type):
+            return False
+
+        # Confirmed — warn publicly under the message and alert the mods.
+        _mark_handled(message.id)  # an edit must not re-trigger a second warning
+        embed = discord.Embed(
+            title="⚠️ Possible Scam Warning",
+            description=SCAM_WARNING_TEXT,
+            color=0xFF4444,
+        )
+        embed.set_footer(text="African Freefire Community  •  automated scam screening")
+        try:
+            await message.reply(embed=embed, mention_author=False)
+        except Exception as e:
+            print(f"⚠️  Could not post scam warning: {e}")
+
+        try:
+            mods = bot.get_channel(MODS_CHANNEL_ID) or await bot.fetch_channel(MODS_CHANNEL_ID)
+            preview = (text or "(image only)")[:300]
+            await mods.send(
+                f"🚨 **Possible scam flagged** — {author.mention} in {message.channel.mention}\n"
+                f"[Jump to message]({message.jump_url})\n"
+                f">>> {preview}"
+            )
+        except Exception as e:
+            print(f"⚠️  Could not alert mods about scam: {e}")
+
+        print(f"🚨  Scam flagged: {author} in #{getattr(message.channel, 'name', message.channel.id)}: {text[:80]}")
+        return True
+    except Exception as e:
+        print(f"⚠️  Scam screening error: {e}")
+        return False
+
+
 async def _handle_message(message: discord.Message):
     # Ignore self
     if message.author == bot.user:
+        return
+
+    # Scam screening runs on EVERY guild message (scams get blasted into any
+    # channel, not just the allowlisted ones). If flagged, the warning has been
+    # posted and mods pinged — nothing else to do with this message.
+    if not getattr(message, "_from_slash", False) and await _maybe_flag_scam(message):
         return
 
     # Only allowed channels — except slash commands, which Discord already
