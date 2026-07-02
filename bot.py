@@ -3,6 +3,7 @@ import os
 import sys
 import glob
 import re
+import time
 import tempfile
 import aiohttp
 import json
@@ -190,6 +191,9 @@ HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
 MODS_CHANNEL_ID = 1324442579265388644
 # Roles allowed to trigger/stop transcription (mods + support)
 TRANSCRIPTION_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
+# End a transcription session automatically after this much total silence and
+# post whatever was captured so far.
+TRANSCRIPTION_SILENCE_TIMEOUT_SECS = 300  # 5 minutes
 
 # Roles allowed to approve/reject organizer-event announcements (mirrors transcription perms)
 EVENT_APPROVAL_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
@@ -3148,6 +3152,9 @@ if VOICE_RECEIVE_SUPPORTED:
             self._pcm: dict[int, bytearray] = {}
             self._ratecv_state: dict[int, object] = {}
             self._capped: set[int] = set()
+            # Monotonic timestamp of the last received voice packet — the
+            # silence watchdog reads this to auto-end quiet sessions.
+            self.last_audio_at: float = time.monotonic()
 
         def wants_opus(self) -> bool:
             return False
@@ -3155,6 +3162,7 @@ if VOICE_RECEIVE_SUPPORTED:
         def write(self, user, data) -> None:
             if user is None:
                 return
+            self.last_audio_at = time.monotonic()
             try:
                 mono = audioop.tomono(data.pcm, self.SRC_WIDTH, 0.5, 0.5)
                 converted, self._ratecv_state[user.id] = audioop.ratecv(
@@ -3187,6 +3195,68 @@ if VOICE_RECEIVE_SUPPORTED:
             return out
 else:
     PerUserTranscriptionSink = None
+
+
+async def _finalize_transcription(guild_id: int, notice: str | None):
+    """Single teardown path for a transcription session — used by the stop
+    command, the silence watchdog, and the kicked-from-voice handler. Pops the
+    session first (so concurrent/double finalize is a no-op), stops listening,
+    disconnects, then posts the transcript from whatever was captured."""
+    session = active_transcriptions.pop(guild_id, None)
+    if not session:
+        return
+    vc, sink = session["vc"], session.get("sink")
+    try:
+        if hasattr(vc, "stop_listening"):
+            vc.stop_listening()
+    except Exception as e:
+        print(f"⚠️  stop_listening failed: {e}")
+    try:
+        await vc.disconnect(force=True)
+    except Exception as e:
+        print(f"⚠️  voice disconnect failed: {e}")
+    if notice:
+        try:
+            await session["text_channel"].send(notice)
+        except Exception:
+            pass
+    # Give the library's detached router thread a beat to flush its final
+    # write() before we read the buffers (see take_audio()).
+    await asyncio.sleep(0.5)
+    audio = sink.take_audio() if sink else {}
+
+    async def _finish():
+        try:
+            await _process_and_send_transcript(
+                audio, session["text_channel"], session["requester"], session["start_time"]
+            )
+        except Exception as e:
+            print(f"⚠️  Transcript generation failed: {e}")
+
+    asyncio.create_task(_finish())
+
+
+def _start_silence_watchdog(guild_id: int, sink):
+    """Auto-end the session after TRANSCRIPTION_SILENCE_TIMEOUT_SECS with no
+    incoming voice packets, posting whatever was captured up to that point."""
+    async def _watch():
+        try:
+            while True:
+                await asyncio.sleep(30)
+                session = active_transcriptions.get(guild_id)
+                if not session or session.get("sink") is not sink:
+                    return  # session ended (stop/kick) or replaced by a new one
+                if time.monotonic() - sink.last_audio_at >= TRANSCRIPTION_SILENCE_TIMEOUT_SECS:
+                    mins = TRANSCRIPTION_SILENCE_TIMEOUT_SECS // 60
+                    await _finalize_transcription(
+                        guild_id,
+                        f"🔇 No one has spoken for {mins} minutes — stopped transcribing.",
+                    )
+                    return
+        except Exception as e:
+            print(f"⚠️  Silence watchdog error: {e}")
+
+    asyncio.create_task(_watch())
 
 
 def has_transcription_role(member: discord.Member) -> bool:
@@ -3384,9 +3454,11 @@ async def on_stage_instance_create(stage: discord.StageInstance):
                 }
 
                 vc.listen(sink)
+                _start_silence_watchdog(stage.guild.id, sink)
                 await mods_channel.send(
                     f"✅ Joined {stage.channel.mention} and started transcribing.\n"
-                    f"Say `@bot stop transcribing` when the session is done."
+                    f"Say `@bot stop transcribing` when the session is done "
+                    f"(I'll also stop on my own after {TRANSCRIPTION_SILENCE_TIMEOUT_SECS // 60} minutes of silence)."
                 )
             except Exception as e:
                 # Never strand a live voice connection when a step after a
@@ -3419,37 +3491,12 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         return
     if before.channel is None or after.channel is not None:
         return  # not a disconnect
-    session = active_transcriptions.pop(member.guild.id, None)
-    if not session:
+    if member.guild.id not in active_transcriptions:
         return
-    vc, sink = session["vc"], session.get("sink")
-    try:
-        if hasattr(vc, "stop_listening"):
-            vc.stop_listening()
-    except Exception:
-        pass
-    try:
-        await vc.disconnect(force=True)
-    except Exception:
-        pass
-    try:
-        await session["text_channel"].send(
-            "⚠️ I was disconnected from the voice channel — generating the transcript from what was captured."
-        )
-    except Exception:
-        pass
-    await asyncio.sleep(0.5)  # let the router thread flush (see take_audio())
-    audio = sink.take_audio() if sink else {}
-
-    async def _finish():
-        try:
-            await _process_and_send_transcript(
-                audio, session["text_channel"], session["requester"], session["start_time"]
-            )
-        except Exception as e:
-            print(f"⚠️  Transcript generation failed: {e}")
-
-    asyncio.create_task(_finish())
+    await _finalize_transcription(
+        member.guild.id,
+        "⚠️ I was disconnected from the voice channel — generating the transcript from what was captured.",
+    )
 
 
 # ── Slash commands ────────────────────────────────────────────────────────────
@@ -4319,43 +4366,11 @@ async def _handle_message(message: discord.Message):
             action = trans_cmd["action"]
 
             if action == "stop":
-                session = active_transcriptions.pop(message.guild.id, None)
-                if not session:
+                if message.guild.id not in active_transcriptions:
                     await message.reply("❌ No active transcription session running.", mention_author=True)
                     return
-                vc   = session["vc"]
-                sink = session.get("sink")
-                try:
-                    if hasattr(vc, "stop_listening"):
-                        vc.stop_listening()
-                except Exception as e:
-                    print(f"⚠️  stop_listening failed: {e}")
-                try:
-                    await vc.disconnect(force=True)
-                except Exception as e:
-                    print(f"⚠️  voice disconnect failed: {e}")
                 await message.reply("⏹️ Stopped recording. Generating transcript...", mention_author=True)
-
-                # Give the library's detached router thread a beat to flush its
-                # final write() before we read the buffers (see take_audio()).
-                await asyncio.sleep(0.5)
-                audio = sink.take_audio() if sink else {}
-
-                # Whisper can take minutes on a long session — run it as a task
-                # so the message handler returns immediately.
-                async def _finish(a=audio, s=session):
-                    try:
-                        await _process_and_send_transcript(
-                            a, s["text_channel"], s["requester"], s["start_time"]
-                        )
-                    except Exception as e:
-                        print(f"⚠️  Transcript generation failed: {e}")
-                        try:
-                            await s["text_channel"].send("⚠️ Transcript generation failed.")
-                        except Exception:
-                            pass
-
-                asyncio.create_task(_finish())
+                await _finalize_transcription(message.guild.id, None)
                 return
 
             elif action == "start":
@@ -4408,9 +4423,11 @@ async def _handle_message(message: discord.Message):
                     }
 
                     vc.listen(sink)
+                    _start_silence_watchdog(message.guild.id, sink)
                     await message.reply(
                         f"✅ Joined {voice_ch.mention} and started transcribing.\n"
-                        f"Say `@bot stop transcribing` when the session is done.",
+                        f"Say `@bot stop transcribing` when the session is done "
+                        f"(I'll also stop on my own after {TRANSCRIPTION_SILENCE_TIMEOUT_SECS // 60} minutes of silence).",
                         mention_author=True
                     )
                 except discord.ClientException:
