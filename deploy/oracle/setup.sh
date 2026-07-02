@@ -110,9 +110,40 @@ systemctl enable "${SERVICE_NAME}"
 
 if [[ -s "${APP_DIR}/.env" ]] && grep -q "DISCORD_TOKEN=." "${APP_DIR}/.env"; then
     echo "==> Restarting service"
+    RESTART_AT="$(date '+%Y-%m-%d %H:%M:%S')"
     systemctl restart "${SERVICE_NAME}"
-    sleep 2
-    systemctl status "${SERVICE_NAME}" --no-pager || true
+
+    # ── Post-deploy health check ──────────────────────────────────────────────
+    # "systemctl restart succeeded" is NOT "the bot is up": a login failure
+    # (e.g. PrivilegedIntentsRequired when a privileged intent isn't enabled in
+    # the Discord Developer Portal, or a bad token) leaves the service crash-
+    # looping while the deploy reports green — exactly what happened 2026-07-02
+    # (33-minute silent outage). Wait for the on_ready "online as" line in the
+    # journal; fail the deploy loudly if it never appears.
+    echo "==> Health check: waiting for Discord login (up to 90s)"
+    HEALTH_OK=0
+    for _ in $(seq 1 18); do
+        sleep 5
+        if journalctl -u "${SERVICE_NAME}" --since "${RESTART_AT}" --no-pager 2>/dev/null \
+                | grep -q "AFC Bot is online as"; then
+            HEALTH_OK=1
+            break
+        fi
+        # Login-fatal errors never self-heal — stop waiting immediately.
+        if journalctl -u "${SERVICE_NAME}" --since "${RESTART_AT}" --no-pager 2>/dev/null \
+                | grep -qE "PrivilegedIntentsRequired|LoginFailure|Improper token"; then
+            break
+        fi
+    done
+
+    if [[ ${HEALTH_OK} -eq 1 ]]; then
+        echo "==> Health check PASSED — bot logged in."
+        systemctl status "${SERVICE_NAME}" --no-pager || true
+    else
+        echo "==> Health check FAILED — bot did not log in after restart. Recent logs:"
+        journalctl -u "${SERVICE_NAME}" --since "${RESTART_AT}" --no-pager | tail -30 || true
+        exit 1
+    fi
 else
     echo "==> .env missing secrets. Edit ${APP_DIR}/.env then run: sudo systemctl restart ${SERVICE_NAME}"
 fi
