@@ -189,6 +189,9 @@ HISTORY_TTL_SECS = 24 * 60 * 60   # 24 hours in seconds
 # ── Transcription config ──────────────────────────────────────────────────────
 # Channel where the bot asks about stage transcription
 MODS_CHANNEL_ID = 1324442579265388644
+# Mods role pinged when something in the mods channel needs a human decision
+# (currently: a new event waiting for Approve/Reject).
+MODS_PING_ROLE_ID = 920732112238284871
 # Roles allowed to trigger/stop transcription (mods + support)
 TRANSCRIPTION_ROLES = set(ANNOUNCE_ROLES + SUPPORT_ROLES)
 # End a transcription session automatically after this much total silence and
@@ -800,10 +803,21 @@ async def post_event_for_approval(event: dict):
     target    = "scrim" if is_scrim else "tournament"
     organizer = event.get("organization_name") or "African Freefire Community"
     header = (
+        f"<@&{MODS_PING_ROLE_ID}>\n"
         f"🕓 **PENDING APPROVAL** — new {target} from **{organizer}**.\n"
         f"Approve to announce it publicly, or reject to discard."
     )
-    msg = await channel.send(content=header, embed=embed, view=EventApprovalView())
+    # Explicit allowed_mentions so the role actually pings even if it isn't set
+    # "mentionable" in server settings. users/everyone stay off; the header only
+    # ever contains this one role.
+    msg = await channel.send(
+        content=header,
+        embed=embed,
+        view=EventApprovalView(),
+        allowed_mentions=discord.AllowedMentions(
+            everyone=False, users=False, roles=[discord.Object(id=MODS_PING_ROLE_ID)]
+        ),
+    )
     _pending_event_approvals[str(msg.id)] = event
     # Raise if we can't persist the pending record so the poll loop's except leaves
     # the event unseen and retries — rather than marking it seen with an in-memory-
