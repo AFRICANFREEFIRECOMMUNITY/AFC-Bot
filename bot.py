@@ -692,6 +692,9 @@ async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
     # so they're attributed to the community itself.
     organizer  = event.get("organization_name") or "African Freefire Community"
     event_url  = f"https://africanfreefirecommunity.com/tournaments/{slug}" if slug else "https://africanfreefirecommunity.com/tournaments"
+    # None = the payload didn't carry the flag; stay silent rather than guess
+    # wrong about whether anyone can register.
+    is_public  = event.get("is_public")
 
     is_scrim = comp_type.lower() == "scrims"
     color    = 0xFFD700 if is_scrim else 0x00A550
@@ -701,7 +704,19 @@ async def build_event_embed(event: dict) -> tuple[discord.Embed, str | None]:
     if start_date: lines.append(f"📅 **Date:** {start_date}")
     if prizepool:  lines.append(f"💰 **Prize Pool:** {prizepool}")
     if max_slots:  lines.append(f"👥 **Slots:** {registered}/{max_slots}")
+    if is_public is True:
+        lines.append("🌍 **Access:** Public (open to everyone)")
+    elif is_public is False:
+        lines.append("🔒 **Access:** Private (invite only)")
     lines.append(f"\n🔗 **[View & Register →]({event_url})**")
+    if is_public is True:
+        lines.append("\n✅ **Open to everyone.** Registration is open to any player, no invite needed. Hit the link above, log in, and sign up before slots fill.")
+    elif is_public is False:
+        lines.append(
+            f"\n🔒 **Private event.** Registration is invite only, so the link above won't let just anyone in. "
+            f"To take part you need an invite link from the organizer, **{organizer}**. Reach out to them to request one. "
+            f"Invite links are single-use, so don't share yours."
+        )
 
     embed = discord.Embed(
         title=f"{'🎮 New Scrim' if is_scrim else '🏆 New Tournament'}: {name}",
