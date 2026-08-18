@@ -495,6 +495,7 @@ async def news_poll_loop():
 
     while not bot.is_closed():
         await asyncio.sleep(NEWS_POLL_INTERVAL_SECS)
+        note_loop_run("news")
         try:
             articles = await fetch_all_news()
             if articles is None:
@@ -918,6 +919,7 @@ async def event_poll_loop():
 
     while not bot.is_closed():
         await asyncio.sleep(EVENT_POLL_INTERVAL_SECS)
+        note_loop_run("events")
         try:
             events = await fetch_all_events()
             if events is None:
@@ -1257,6 +1259,7 @@ async def ban_poll_loop():
 
     while not bot.is_closed():
         await asyncio.sleep(BAN_POLL_INTERVAL_SECS)
+        note_loop_run("bans")
         try:
             activities = await fetch_admin_activities()
             if activities is None:
@@ -3840,6 +3843,15 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️  Slash command sync failed: {e}")
 
+    # Saved settings from the AFC admin's Bot page, applied before the loops read
+    # their intervals and channels. See the Control API section at the end of this file.
+    global _CONFIG_OVERRIDES
+    _CONFIG_OVERRIDES = load_config_overrides()
+    if _CONFIG_OVERRIDES:
+        apply_config_overrides(_CONFIG_OVERRIDES)
+        print(f"Applied {len(_CONFIG_OVERRIDES)} saved setting(s) from bot_config.json")
+    bot.loop.create_task(start_control_api())
+
     bot.loop.create_task(auto_purge_loop())
     bot.loop.create_task(auto_scrape_loop())
     bot.loop.create_task(news_poll_loop())
@@ -5547,6 +5559,502 @@ async def _handle_message(message: discord.Message):
     _mark_handled(message.id)
     if needs_support:
         await send_support_redirect(message)
+
+
+# ── Control API: the backend behind the AFC admin's Bot page ─────────────────
+# Backlog item 31, "a UI and webpage to manage the bot" (owner 2026-08-18).
+#
+# WHY THE UI IS NOT SERVED FROM HERE. The page lives in the AFC admin dashboard
+# (frontend /a/bot), because that is where admins already are and it inherits the
+# login, the head_admin gate, the design system and i18n for free. This module is
+# only the machine half: a small HTTP surface the AFC backend proxies to. The
+# browser never talks to this port and never holds the token.
+#
+# AUTH. One shared secret, BOT_CONTROL_TOKEN, compared with hmac.compare_digest.
+# No token set means the server does NOT START AT ALL: an unauthenticated control
+# port that can rewrite channel routing and read the knowledge base is worse than
+# no control port. Bind host defaults to 127.0.0.1 so it is not reachable off-box
+# unless somebody deliberately widens it.
+#
+# WHAT IT EXPOSES
+#   GET    /control/status              health, provider chain, loop heartbeats
+#   GET    /control/config              the editable settings + their defaults
+#   POST   /control/config              save overrides, applied live, no restart
+#   DELETE /control/config?name=        reset one setting to its default
+#   GET    /control/knowledge           list the docs in knowledge/ + knowledge_staff/
+#   POST   /control/knowledge           upload one (multipart)
+#   DELETE /control/knowledge?name=&scope=   remove one
+#   POST   /control/rescrape            re-run the website scrape now
+#   GET    /control/approvals           pending scrim/tournament announcements
+#   POST   /control/approvals           {message_id, action: approve|reject}
+#
+# aiohttp is already a dependency (the bot uses it to poll the AFC API), so this
+# adds no new package.
+
+import hmac
+from aiohttp import web
+
+# The port and secret. Both env-driven; see the AUTH note above for why a missing
+# token disables the whole server rather than defaulting to open.
+BOT_CONTROL_TOKEN = os.getenv("BOT_CONTROL_TOKEN", "")
+BOT_CONTROL_HOST  = os.getenv("BOT_CONTROL_HOST", "127.0.0.1")
+BOT_CONTROL_PORT  = int(os.getenv("BOT_CONTROL_PORT", "8099"))
+
+# Where a UI save is persisted. Read at startup, so an override survives a restart.
+BOT_CONFIG_FILE = os.path.join(BASE_DIR, "bot_config.json")
+
+# ── What the UI may change, and how each value is validated ──────────────────
+# The constants above are the DEFAULTS. An override here replaces one at runtime.
+#
+# "ids"   -> list of Discord snowflakes, stored as ints
+# "id"    -> a single snowflake
+# "int"   -> a bounded whole number (min, max), which is what stops somebody
+#            setting a 0-second poll interval and rate-limiting the bot to death
+EDITABLE_CONFIG = {
+    "ALLOWED_CHANNELS":          ("ids", None),
+    "AUTO_REPLY_CHANNELS":       ("ids", None),
+    "ALLOWED_CATEGORIES":        ("ids", None),
+    "ANNOUNCE_ROLES":            ("ids", None),
+    "SUPPORT_ROLES":             ("ids", None),
+    "MODS_PING_ROLE_ID":         ("id",  None),
+    "SCRIMS_PING_ROLE_ID":       ("id",  None),
+    "TOURNAMENT_ANNOUNCEMENT_CHANNEL_ID": ("id", None),
+    "SCRIM_ANNOUNCEMENT_CHANNEL_ID":      ("id", None),
+    "NEWS_ANNOUNCEMENT_CHANNEL_ID":       ("id", None),
+    "BAN_ANNOUNCEMENT_CHANNEL_ID":        ("id", None),
+    "UNBAN_ANNOUNCEMENT_CHANNEL_ID":      ("id", None),
+    "MODS_CHANNEL_ID":                    ("id", None),
+    "SUPPORT_CHANNEL_ID":                 ("id", None),
+    # Lower bounds are deliberate: the AFC API is polled on these, and a tight
+    # loop against it is indistinguishable from an attack.
+    "NEWS_POLL_INTERVAL_SECS":   ("int", (30, 86400)),
+    "EVENT_POLL_INTERVAL_SECS":  ("int", (30, 86400)),
+    "BAN_POLL_INTERVAL_SECS":    ("int", (30, 86400)),
+    "SCRAPE_INTERVAL_HOURS":     ("int", (1, 168)),
+}
+
+# The values as this file defined them, captured BEFORE any override is applied,
+# so the UI can always show "default: X" next to a changed setting and offer a
+# reset. Captured by _capture_config_defaults() once the module is loaded.
+_CONFIG_DEFAULTS: dict = {}
+_CONFIG_OVERRIDES: dict = {}
+
+
+def _jsonable_config(value):
+    """A JSON-safe view of a config value.
+
+    ALLOWED_CATEGORIES is declared as a set literal, and json cannot serialize a set,
+    which is what 500'd GET /control/config the first time this ran. Sorted so the UI
+    shows a stable order rather than set iteration order.
+    """
+    if isinstance(value, (set, frozenset)):
+        return sorted(value)
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return value
+
+
+def _capture_config_defaults():
+    """Snapshot the module-level defaults. Called once, before overrides land."""
+    if _CONFIG_DEFAULTS:
+        return
+    for name in EDITABLE_CONFIG:
+        if name in globals():
+            value = globals()[name]
+            _CONFIG_DEFAULTS[name] = _jsonable_config(value)
+
+
+def _coerce_config_value(name, raw):
+    """Validate one incoming value. Raises ValueError with a sentence a human can act on."""
+    kind, bounds = EDITABLE_CONFIG[name]
+    if kind == "ids":
+        if not isinstance(raw, (list, tuple)):
+            raise ValueError(f"{name} must be a list of Discord IDs.")
+        out = []
+        for item in raw:
+            try:
+                out.append(int(str(item).strip()))
+            except (TypeError, ValueError):
+                raise ValueError(f"{name}: '{item}' is not a Discord ID.")
+        return out
+    if kind == "id":
+        try:
+            return int(str(raw).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f"{name}: '{raw}' is not a Discord ID.")
+    if kind == "int":
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"{name} must be a whole number.")
+        low, high = bounds
+        if not (low <= value <= high):
+            raise ValueError(f"{name} must be between {low} and {high}.")
+        return value
+    raise ValueError(f"{name} is not editable.")
+
+
+def load_config_overrides() -> dict:
+    """Read the saved overrides. A corrupt file is ignored rather than fatal: the
+    bot must still boot on its defaults, because no announcements at all is worse
+    than announcements on the old routing."""
+    if not os.path.exists(BOT_CONFIG_FILE):
+        return {}
+    try:
+        with open(BOT_CONFIG_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        return {k: v for k, v in saved.items() if k in EDITABLE_CONFIG}
+    except Exception as e:
+        print(f"WARNING: could not read {BOT_CONFIG_FILE}, using defaults: {e}")
+        return {}
+
+
+def apply_config_overrides(overrides: dict):
+    """Push overrides onto the module globals so EVERY existing read site picks
+    them up with no restart.
+
+    WHY globals() RATHER THAN A cfg() ACCESSOR. These constants are read from ~44
+    places across a 5,500-line file with no test suite. Rewriting every site is a
+    far larger and riskier diff than replacing the values in one clearly-marked
+    function, and an accessor that some sites forgot to use would be a setting
+    that silently only half-applies. The set of names is closed (EDITABLE_CONFIG),
+    every value is validated before it gets here, and this is the only writer.
+
+    STAFF_KNOWLEDGE_ROLES is rebuilt too: it is derived from ANNOUNCE_ROLES +
+    SUPPORT_ROLES at import time, so a role change would otherwise not reach it.
+    """
+    _capture_config_defaults()
+    for name, value in overrides.items():
+        if name not in EDITABLE_CONFIG:
+            continue
+        current = globals().get(name)
+        # Keep the declared container type: ALLOWED_CATEGORIES is a set literal, and a
+        # value that quietly becomes a list after the first save is a difference nobody
+        # would think to look for later.
+        globals()[name] = set(value) if isinstance(current, (set, frozenset)) else value
+    globals()["STAFF_KNOWLEDGE_ROLES"] = set(
+        list(globals().get("ANNOUNCE_ROLES", [])) +
+        list(globals().get("SUPPORT_ROLES", [])) +
+        [globals().get("SCRIMS_MASTER_ROLE_ID")]
+    )
+
+
+def save_config_overrides(overrides: dict):
+    with open(BOT_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(overrides, f, indent=2)
+
+
+# ── Loop heartbeats ──────────────────────────────────────────────────────────
+# Each background loop stamps itself here at the top of every cycle. The Status
+# tab reads it, which is the difference between "the process is up" and "the news
+# loop has not completed a cycle in six hours". The second is the failure that
+# actually happens, and it is invisible from the outside.
+_LOOP_STATE: dict = {}
+_BOT_STARTED_AT = time.time()
+
+
+def note_loop_run(name: str, ok: bool = True, detail: str = ""):
+    entry = _LOOP_STATE.setdefault(name, {"runs": 0, "errors": 0})
+    entry["runs"] += 1
+    if not ok:
+        entry["errors"] += 1
+        entry["last_error"] = detail[:300]
+        entry["last_error_at"] = time.time()
+    entry["last_run_at"] = time.time()
+
+
+def _provider_chain() -> list:
+    """Which AI providers are configured, primary first. The Status tab prints this
+    because "the bot is answering" and "the bot is answering on the last-resort free
+    tier" look identical from Discord and cost very different things."""
+    chain = [{"name": "OpenAI (primary)", "model": "gpt-4o", "configured": bool(OPENAI_API_KEY)}]
+    for i, p in enumerate(FALLBACK_PROVIDERS, start=1):
+        chain.append({
+            "name": f"Fallback {i}",
+            "model": p.get("model"),
+            "base_url": p.get("base_url"),
+            "configured": True,
+        })
+    return chain
+
+
+# ── HTTP surface ─────────────────────────────────────────────────────────────
+def _authorised(request) -> bool:
+    """Constant-time compare of the bearer token. Never `==`: a plain comparison
+    leaks the token one character at a time to anybody who can time it."""
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header.split(" ", 1)[1], BOT_CONTROL_TOKEN)
+
+
+def _deny():
+    return web.json_response({"message": "Unauthorized."}, status=401)
+
+
+async def control_status(request):
+    if not _authorised(request):
+        return _deny()
+    guilds = [{"id": str(g.id), "name": g.name, "members": g.member_count} for g in bot.guilds]
+    return web.json_response({
+        "online": bot.is_ready() and not bot.is_closed(),
+        "user": str(bot.user) if bot.user else None,
+        "started_at": _BOT_STARTED_AT,
+        "uptime_secs": int(time.time() - _BOT_STARTED_AT),
+        "guilds": guilds,
+        "providers": _provider_chain(),
+        "loops": _LOOP_STATE,
+        "knowledge_chars": len(load_knowledge()),
+        "pending_approvals": len(_pending_event_approvals),
+        "listening_channels": len(ALLOWED_CHANNELS),
+        "listening_categories": len(ALLOWED_CATEGORIES),
+    })
+
+
+async def control_get_config(request):
+    if not _authorised(request):
+        return _deny()
+    _capture_config_defaults()
+    fields = []
+    for name, (kind, bounds) in EDITABLE_CONFIG.items():
+        fields.append({
+            "name": name,
+            "kind": kind,
+            "bounds": list(bounds) if bounds else None,
+            "value": _jsonable_config(globals().get(name)),
+            "default": _CONFIG_DEFAULTS.get(name),
+            "overridden": name in _CONFIG_OVERRIDES,
+        })
+    return web.json_response({"fields": fields})
+
+
+async def control_post_config(request):
+    if not _authorised(request):
+        return _deny()
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"message": "Body must be JSON."}, status=400)
+
+    incoming = body.get("values")
+    if not isinstance(incoming, dict):
+        return web.json_response({"message": "`values` must be an object."}, status=400)
+
+    # Validate EVERYTHING before writing ANYTHING. A half-applied save would leave
+    # the bot routing announcements to a mix of old and new channels, which is the
+    # worst possible state to debug from Discord.
+    cleaned = {}
+    for name, raw in incoming.items():
+        if name not in EDITABLE_CONFIG:
+            return web.json_response({"message": f"{name} is not an editable setting."}, status=400)
+        try:
+            cleaned[name] = _coerce_config_value(name, raw)
+        except ValueError as e:
+            return web.json_response({"message": str(e)}, status=400)
+
+    global _CONFIG_OVERRIDES
+    _CONFIG_OVERRIDES = {**_CONFIG_OVERRIDES, **cleaned}
+    save_config_overrides(_CONFIG_OVERRIDES)
+    apply_config_overrides(_CONFIG_OVERRIDES)
+    print(f"Control API: applied {len(cleaned)} setting(s) live: {', '.join(cleaned)}")
+    return web.json_response({"message": f"Saved {len(cleaned)} setting(s). Applied immediately.",
+                              "applied": list(cleaned)})
+
+
+async def control_reset_config(request):
+    """Drop one override and go back to the value in bot.py."""
+    if not _authorised(request):
+        return _deny()
+    name = request.query.get("name", "")
+    if name not in EDITABLE_CONFIG:
+        return web.json_response({"message": f"{name} is not an editable setting."}, status=400)
+    global _CONFIG_OVERRIDES
+    _CONFIG_OVERRIDES.pop(name, None)
+    save_config_overrides(_CONFIG_OVERRIDES)
+    _capture_config_defaults()
+    if name in _CONFIG_DEFAULTS:
+        globals()[name] = _CONFIG_DEFAULTS[name]
+    apply_config_overrides(_CONFIG_OVERRIDES)
+    return web.json_response({"message": f"{name} reset to its default."})
+
+
+def _knowledge_dir(scope: str) -> str:
+    return STAFF_KNOWLEDGE_DIR if scope == "staff" else KNOWLEDGE_DIR
+
+
+async def control_knowledge(request):
+    """GET list / POST upload / DELETE remove, over both knowledge folders.
+
+    knowledge_base.txt is deliberately NOT listed or editable: a GitHub Action
+    rewrites it every 3 hours, so anything typed there is lost by teatime. Curated
+    content belongs in these folders, which is exactly what this screen is for.
+    """
+    if not _authorised(request):
+        return _deny()
+
+    if request.method == "GET":
+        out = []
+        for scope in ("public", "staff"):
+            directory = _knowledge_dir(scope)
+            if not os.path.isdir(directory):
+                continue
+            for filename in sorted(os.listdir(directory)):
+                path = os.path.join(directory, filename)
+                if os.path.isfile(path):
+                    out.append({
+                        "name": filename,
+                        "scope": scope,
+                        "bytes": os.path.getsize(path),
+                        "modified": os.path.getmtime(path),
+                    })
+        return web.json_response({"documents": out, "total_chars": len(load_knowledge())})
+
+    if request.method == "DELETE":
+        name = os.path.basename(request.query.get("name", ""))
+        scope = request.query.get("scope", "public")
+        path = os.path.join(_knowledge_dir(scope), name)
+        if not name or not os.path.isfile(path):
+            return web.json_response({"message": "No such document."}, status=404)
+        os.remove(path)
+        print(f"Control API: removed knowledge doc {scope}/{name}")
+        return web.json_response({"message": f"Removed {name}."})
+
+    # POST: multipart upload
+    reader = await request.multipart()
+    field = await reader.next()
+    if field is None or not getattr(field, "filename", ""):
+        return web.json_response({"message": "Attach a file."}, status=400)
+    scope = request.query.get("scope", "public")
+    # basename() so a filename like ../../bot.py cannot escape the folder.
+    name = os.path.basename(field.filename)
+    if not name.lower().endswith((".txt", ".md", ".pdf", ".docx")):
+        return web.json_response(
+            {"message": "Only .txt, .md, .pdf or .docx can be added to the knowledge base."},
+            status=400)
+    directory = _knowledge_dir(scope)
+    os.makedirs(directory, exist_ok=True)
+    destination = os.path.join(directory, name)
+    size = 0
+    with open(destination, "wb") as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 10 * 1024 * 1024:
+                f.close()
+                os.remove(destination)
+                return web.json_response({"message": "That file is over 10 MB."}, status=400)
+            f.write(chunk)
+    print(f"Control API: added knowledge doc {scope}/{name} ({size} bytes)")
+    return web.json_response({"message": f"Added {name}. The bot reads it on the next reply."})
+
+
+async def control_rescrape(request):
+    """Re-run the website scrape now instead of waiting for the 3-hour schedule."""
+    if not _authorised(request):
+        return _deny()
+    try:
+        import afc_scraper
+        await asyncio.get_running_loop().run_in_executor(None, afc_scraper.scrape_site)
+        note_loop_run("scrape", ok=True)
+        return web.json_response({"message": "Re-scraped. New knowledge is live.",
+                                  "chars": len(load_knowledge())})
+    except Exception as e:
+        note_loop_run("scrape", ok=False, detail=str(e))
+        return web.json_response({"message": f"Scrape failed: {e}"}, status=502)
+
+
+async def control_approvals(request):
+    """The same approve/reject gate as the Discord buttons (backlog item 30), from the web.
+
+    Approving here posts the announcement by calling the SAME announce_event() the
+    button calls, so the two routes cannot drift into announcing differently.
+    """
+    if not _authorised(request):
+        return _deny()
+
+    if request.method == "GET":
+        pending = []
+        for message_id, event in _pending_event_approvals.items():
+            pending.append({
+                "message_id": message_id,
+                "event_id": event.get("event_id"),
+                "event_name": event.get("event_name"),
+                "competition_type": event.get("competition_type"),
+                "organization_name": event.get("organization_name"),
+                "start_date": event.get("start_date"),
+                "slug": event.get("slug"),
+            })
+        return web.json_response({"pending": pending})
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"message": "Body must be JSON."}, status=400)
+
+    message_id = str(body.get("message_id", ""))
+    action = (body.get("action") or "").lower()
+    event = _pending_event_approvals.get(message_id)
+    if not event:
+        return web.json_response({"message": "That announcement is no longer pending."}, status=404)
+    if action not in ("approve", "reject"):
+        return web.json_response({"message": '`action` must be "approve" or "reject".'}, status=400)
+
+    _pending_event_approvals.pop(message_id, None)
+    save_pending_event_approvals()
+
+    if action == "approve":
+        await announce_event(event)
+        note = "Approved from the AFC admin. Announcement posted."
+    else:
+        _rejected_event_ids.add(str(event.get("event_id")))
+        save_rejected_event_ids()
+        note = "Rejected from the AFC admin. Not announced."
+
+    # Update the Discord preview too, so the buttons in the mods channel cannot be
+    # pressed again for something already decided on the web.
+    try:
+        channel = bot.get_channel(MODS_CHANNEL_ID) or await bot.fetch_channel(MODS_CHANNEL_ID)
+        msg = await channel.fetch_message(int(message_id))
+        await msg.edit(content=note, view=None)
+    except Exception as e:
+        print(f"WARNING: decided {message_id} but could not update the Discord preview: {e}")
+
+    print(f"{note} ({event.get('event_name')})")
+    return web.json_response({"message": note})
+
+
+async def start_control_api():
+    """Start the control server, or explain why it is not starting.
+
+    Called from on_ready. Failures here NEVER take the bot down: Discord is the
+    product and a management page is not worth losing it over.
+    """
+    if not BOT_CONTROL_TOKEN:
+        print("Control API disabled: BOT_CONTROL_TOKEN is not set.")
+        return
+    try:
+        app = web.Application()
+        app.add_routes([
+            web.get("/control/status", control_status),
+            web.get("/control/config", control_get_config),
+            web.post("/control/config", control_post_config),
+            web.delete("/control/config", control_reset_config),
+            web.get("/control/knowledge", control_knowledge),
+            web.post("/control/knowledge", control_knowledge),
+            web.delete("/control/knowledge", control_knowledge),
+            web.post("/control/rescrape", control_rescrape),
+            web.get("/control/approvals", control_approvals),
+            web.post("/control/approvals", control_approvals),
+        ])
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, BOT_CONTROL_HOST, BOT_CONTROL_PORT)
+        await site.start()
+        print(f"Control API listening on {BOT_CONTROL_HOST}:{BOT_CONTROL_PORT}")
+    except Exception as e:
+        print(f"WARNING: control API failed to start (the bot is unaffected): {e}")
 
 
 if __name__ == "__main__":
